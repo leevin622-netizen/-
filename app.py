@@ -35,7 +35,12 @@ def csrf_token():
 
 @app.before_request
 def check_csrf():
-    if request.method == "POST" and request.form.get("csrf") != session.get("csrf"):
+    # בלי אסימון בסשן אין מה לאמת, ולכן גם טופס בלי אסימון נדחה
+    expected = session.get("csrf") or ""
+    given = request.form.get("csrf") or ""
+    if request.method == "POST" and not (
+        expected and secrets.compare_digest(given.encode(), expected.encode())
+    ):
         return (
             '<!doctype html><meta charset="utf-8"><p dir="rtl">הטופס פג תוקף. רעננו את העמוד ונסו שוב.</p>',
             400,
