@@ -24,5 +24,5 @@ If domain = "" Then WScript.Quit 1
 status = shell.Run("cmd /c tasklist /FI ""IMAGENAME eq ngrok.exe"" | findstr /I ngrok.exe", 0, True)
 If status = 0 Then WScript.Quit 0
 
-command = "cmd /c ngrok http --domain=" & domain & " 5000 >> logs\ngrok.log 2>&1"
+command = "cmd /c ngrok http --url=" & domain & " 5000 >> logs\ngrok.log 2>&1"
 shell.Run command, 0, False
