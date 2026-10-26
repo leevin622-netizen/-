@@ -152,6 +152,13 @@ a.sp:hover { color: var(--accent); text-decoration: underline; }
 .list form { margin: 0; flex: none; }
 .list .btn { width: auto; padding: 8px 14px; font-size: 14px; white-space: nowrap; }
 h2 { font-size: 19px; margin: 22px 0 10px; text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.vibe-switch { margin: 0; }
+.vibe-switch select {
+  display: block; width: auto; max-width: 130px; margin: 0; padding: 5px 8px; font-size: 13px;
+  border-radius: 999px; border-color: var(--accent);
+}
+.vibe-switch .btn { width: auto; padding: 5px 10px; font-size: 13px; }
 """ + themes.BACKGROUND_CSS
 
 # מיון טבלה בלחיצה על כותרת, וסינון לפי טקסט חופשי
@@ -362,13 +369,14 @@ def page(body, title="פלייליסטור", wide=False, script="", theme=None, 
     user_html = (
         f'<span class="user">{escape(user)}<a href="/logout">התנתקות</a></span>' if user else ""
     )
+    switch = vibe_switch() if session.get("token_info") else ""
     return (
         '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{escape(title)}</title><style>{STYLE}{themes.theme_css(theme)}</style></head><body>"
-        + themes.background_html(images)
+        + themes.background_html(images, theme)
         + f'<div class="wrap{" wide" if wide else ""}">'
-        f'<header><a class="logo" href="/">🎧 פלייליסטור</a>{user_html}</header>'
+        f'<header><div class="brand">{switch}<a class="logo" href="/">🎧 פלייליסטור</a></div>{user_html}</header>'
         + body
         + "</div>"
         + (f"<script>{script}</script>" if script else "")
@@ -499,30 +507,35 @@ def network_error(error):
     return page("<p>אין חיבור לספוטיפיי כרגע. בדקו את החיבור לאינטרנט ונסו שוב.</p>"), 503
 
 
-def vibe_picker():
-    """חלון הבחירה של העיצוב. ברירת המחדל אוטומטית, וכל סגנון זמין ידנית. השינוי משפיע על כל המסכים."""
+def vibe_switch():
+    """בחירת העיצוב, קטנה, בפינה הימנית למעלה בכל המסכים. ברירת המחדל אוטומטית, והבחירה משנה הכול."""
     chosen = session.get("vibe_choice", "")
-    options = '<option value="">אוטומטי (לפי מה שנשמע הכי הרבה)</option>' + "".join(
+    options = '<option value="">אוטומטי</option>' + "".join(
         f'<option value="{key}"{" selected" if key == chosen else ""}>{t["emoji"]} {t["label"]}</option>'
         for key, t in themes.THEMES.items()
     )
     return (
-        '<form method="post" action="/vibe" class="card">'
+        '<form method="post" action="/vibe" class="vibe-switch">'
         f'<input type="hidden" name="csrf" value="{csrf_token()}">'
-        f'<label class="field">בחרו עיצוב<select name="vibe">{options}</select></label>'
-        '<button class="btn secondary" type="submit">החל</button></form>'
+        f'<input type="hidden" name="back" value="{escape(request.full_path)}">'
+        f'<select name="vibe" aria-label="בחרו עיצוב" onchange="this.form.submit()">{options}</select>'
+        '<noscript><button class="btn" type="submit">החל</button></noscript></form>'
     )
 
 
 @app.route("/vibe", methods=["POST"])
 def set_vibe():
-    """שומר את העיצוב שנבחר. ריק או לא מוכר חוזר לאוטומטי."""
+    """שומר את העיצוב שנבחר, וחוזר לאותו מסך. ריק או לא מוכר חוזר לאוטומטי."""
     choice = request.form.get("vibe", "")
     if choice in themes.THEMES:
         session["vibe_choice"] = choice
     else:
         session.pop("vibe_choice", None)
-    return redirect("/")
+    back = request.form.get("back", "/")
+    # רק כתובת מהאתר הזה. "//" או "/\" היו שולחים לאתר אחר
+    if not (back.startswith("/") and back[1:2] not in ("/", "\\") and back.isprintable()):
+        back = "/"
+    return redirect(back)
 
 
 def wants_favourites(sp):
@@ -684,7 +697,6 @@ def home():
         "<h1>מה נשמע היום?</h1>"
         f'<div class="vibe">{vibe["emoji"]} החוויה שלך: {escape(vibe["label"])}'
         f'<span class="note">· לפי מה שנשמע הכי הרבה: {escape(auto["label"])}</span></div>'
-        + vibe_picker()
         + '<div class="menu">'
         + onboarding_card
         + '<a href="/build">✨ צור פלייליסט חדש<small>לפי ז\'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a>'

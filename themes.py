@@ -1,4 +1,5 @@
 from html import escape
+import random
 
 # ערכת עיצוב לכל סגנון: צבע מרכזי, צבע הטקסט עליו, ושלושה צבעים לרקע המשתנה
 THEMES = {
@@ -83,10 +84,48 @@ def theme_css(name):
     )
 
 
-def background_html(images):
-    """רקע עם שלוש שורות של תמונות שזזות לסירוגין. בלי תמונות נשאר רק הרקע הצבעוני."""
+# תנועה לכל סגנון. tempo: שניות לתנודה אחת (קצב), rise: שניות שבועה עולה מלמטה למעלה,
+# sway: כמה היא זזה הצידה, pulse: האם היא גם מתנפחת בקצב, colors: שניות למעבר צבעים ברקע
+MOTION = {
+    "pop": {"count": 16, "tempo": 1.6, "rise": 16, "sway": 26, "pulse": False, "colors": 18},
+    "mizrahi": {"count": 14, "tempo": 1.9, "rise": 20, "sway": 56, "pulse": False, "colors": 26},
+    "rock": {"count": 12, "tempo": 0.9, "rise": 10, "sway": 14, "pulse": True, "colors": 10},
+    "hiphop": {"count": 14, "tempo": 1.1, "rise": 13, "sway": 30, "pulse": True, "colors": 12},
+    "electronic": {"count": 26, "tempo": 0.6, "rise": 8, "sway": 8, "pulse": True, "colors": 8},
+    "chill": {"count": 10, "tempo": 3.6, "rise": 26, "sway": 44, "pulse": False, "colors": 30},
+    "default": {"count": 12, "tempo": 2.4, "rise": 16, "sway": 24, "pulse": False, "colors": 18},
+}
+
+
+def bubbles_html(theme):
+    """בועות בצבעי הסגנון. כל אחת מתחילה במקום אחר ונעה בקצב של הסגנון, כמו מוזיקה שעולה ויורדת."""
+    motion = MOTION.get(theme, MOTION["default"])
+    colors = THEMES.get(theme, THEMES["default"])["colors"]
+    rnd = random.Random()
+    items = []
+    for _ in range(motion["count"]):
+        rise = motion["rise"] * rnd.uniform(0.7, 1.3)
+        style = (
+            f"--x:{rnd.randint(-2, 98)}%;--s:{rnd.randint(40, 140)}px;"
+            f"--rise:{rise:.1f}s;--d:-{rnd.uniform(0, rise):.1f}s;"
+            f"--sway:{motion['sway'] * rnd.uniform(0.5, 1.2):.0f}px;--sway-t:{rnd.uniform(2.5, 6):.1f}s;"
+            f"--bob:{rnd.randint(10, 28)}px;--tempo:{motion['tempo']}s;"
+            f"--c:{rnd.choice(colors)};--o:{rnd.uniform(0.25, 0.6):.2f};--b:{rnd.choice([0, 0, 2])}px"
+        )
+        cls = "bubble pulse" if motion["pulse"] else "bubble"
+        items.append(f'<div class="{cls}" style="{style}"><i></i></div>')
+    return f'<div class="bg-bubbles">{"".join(items)}</div>'
+
+
+def background_html(images, theme="default"):
+    """
+    רקע דינמי: בועות שעולות ויורדות בקצב הסגנון, ומעליהן שלוש שורות של תמונות שזזות לסירוגין.
+    בלי תמונות נשארות רק הבועות והצבעים.
+    """
+    bubbles = bubbles_html(theme)
+    style = f"--color-t:{MOTION.get(theme, MOTION['default'])['colors']}s"
     if not images:
-        return '<div class="bg" aria-hidden="true"></div><div class="bg-shade light"></div>'
+        return f'<div class="bg" aria-hidden="true" style="{style}">{bubbles}</div><div class="bg-shade light"></div>'
     rows = []
     for i in range(3):
         # כל שורה מתחילה מתמונה אחרת, וכל שורה מוכפלת כדי שהתנועה תהיה רציפה
@@ -95,7 +134,7 @@ def background_html(images):
             shifted += shifted
         imgs = "".join(f'<img src="{escape(url)}" alt="" loading="lazy">' for url in shifted)
         rows.append(f'<div class="bg-row r{i + 1}"><div class="bg-track">{imgs}{imgs}</div></div>')
-    return f'<div class="bg" aria-hidden="true">{"".join(rows)}</div><div class="bg-shade"></div>'
+    return f'<div class="bg" aria-hidden="true" style="{style}">{bubbles}{"".join(rows)}</div><div class="bg-shade"></div>'
 
 
 BACKGROUND_CSS = """
@@ -103,7 +142,22 @@ BACKGROUND_CSS = """
   position: fixed; inset: 0; z-index: -2; overflow: hidden; direction: ltr;
   display: flex; flex-direction: column; justify-content: space-around;
   background: linear-gradient(120deg, var(--c1), var(--c2), var(--c3), var(--c1));
-  background-size: 300% 300%; animation: colors 18s ease infinite;
+  background-size: 300% 300%; animation: colors var(--color-t, 18s) ease infinite;
+}
+.bg-bubbles { position: absolute; inset: 0; overflow: hidden; }
+.bubble {
+  position: absolute; bottom: -180px; left: var(--x); width: var(--s); height: var(--s);
+  animation: rise var(--rise) linear infinite; animation-delay: var(--d); will-change: transform;
+}
+.bubble i {
+  display: block; width: 100%; height: 100%; border-radius: 50%; opacity: var(--o);
+  background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, .85), var(--c) 42%, transparent 72%);
+  filter: blur(var(--b));
+  animation: sway var(--sway-t) ease-in-out infinite alternate, bob var(--tempo) ease-in-out infinite;
+}
+.bubble.pulse i {
+  animation: sway var(--sway-t) ease-in-out infinite alternate, bob var(--tempo) ease-in-out infinite,
+    pulse var(--tempo) ease-in-out infinite;
 }
 .bg-row { overflow: hidden; }
 .bg-track { display: flex; gap: 16px; width: max-content; animation: slide 70s linear infinite; }
@@ -120,5 +174,12 @@ BACKGROUND_CSS = """
 .bg-shade.light { background: radial-gradient(ellipse at center, rgba(0,0,0,.1), rgba(0,0,0,.55)); }
 @keyframes colors { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 @keyframes slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-@media (prefers-reduced-motion: reduce) { .bg, .bg-track { animation: none; } }
+@keyframes rise { from { transform: translateY(0); } to { transform: translateY(calc(-100vh - 280px)); } }
+@keyframes sway { from { transform: translateX(calc(var(--sway) * -1)); } to { transform: translateX(var(--sway)); } }
+@keyframes bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 calc(var(--bob) * -1); } }
+@keyframes pulse { 0%, 100% { scale: 1; } 50% { scale: 1.15; } }
+@media (prefers-reduced-motion: reduce) {
+  .bg, .bg-track, .bubble, .bubble i { animation: none; }
+  .bg-bubbles { display: none; }
+}
 """
