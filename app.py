@@ -3,7 +3,7 @@ import secrets
 import time
 from collections import Counter
 from html import escape
-from flask import Flask, g, has_request_context, jsonify, redirect, request, session
+from flask import Flask, g, has_request_context, redirect, request, session
 from dotenv import load_dotenv
 import requests
 import spotipy
@@ -17,7 +17,6 @@ import favourites
 import json
 from urllib.parse import urlencode
 from playlist_names import suggest_names
-from previews import preview_url
 from engine import (
     GENRE_HINTS, EVENT_HINTS, EVENT_GROUPS, LANGUAGES, HEBREW_GENRES, WORLD_GENRES,
     find_tracks, find_liked_tracks, create_playlist, to_result, album_year, PLAYLIST_DESCRIPTION,
@@ -63,7 +62,6 @@ RATE_LIMITS = {
     ("POST", "/build"): ("build", 20, 60),
     ("POST", "/build/more"): ("build", 20, 60),
     ("POST", "/save"): ("save", 10, 60),
-    ("GET", "/preview"): ("preview", 60, 60),
     ("GET", "/login"): ("login", 20, 600),
     ("GET", "/callback"): ("login", 20, 600),
 }
@@ -199,13 +197,10 @@ h2 { font-size: 19px; margin: 22px 0 10px; text-shadow: 0 2px 12px rgba(0, 0, 0,
   margin-bottom: 16px; font-size: 14px;
 }
 .moves { display: inline-flex; flex-direction: column; gap: 2px; flex: none; }
-.list .move, .list .play {
+.list .move {
   width: auto; padding: 2px 9px; font-size: 13px; line-height: 1.4; border-radius: 999px;
   background: var(--card-hover); color: var(--text); border: 1px solid var(--border); cursor: pointer;
 }
-.list .play { padding: 6px 10px; font-size: 14px; }
-.list .play.playing { background: var(--accent); color: var(--on-accent); }
-.list .play:disabled { opacity: .5; cursor: default; }
 .bars { display: grid; gap: 8px; margin-bottom: 8px; }
 .bar-row { display: grid; grid-template-columns: minmax(90px, 150px) 1fr 44px; gap: 10px; align-items: center; font-size: 14px; }
 .bar-row .track { display: block; background: var(--border); border-radius: 999px; height: 12px; overflow: hidden; }
@@ -282,39 +277,6 @@ SORT_JS = """
 """
 
 # השמעה של קטע של 30 שניות. נטען מ-Deezer רק כשלוחצים, וקטע אחד מתנגן בכל פעם
-PLAY_JS = """
-(function () {
-  var list = document.getElementById("playlist");
-  if (!list) return;
-  var player = new Audio(), playingButton = null;
-  function stop() {
-    player.pause();
-    if (playingButton) playingButton.classList.remove("playing");
-    playingButton = null;
-  }
-  player.addEventListener("ended", stop);
-  list.addEventListener("click", function (event) {
-    var button = event.target.closest(".play");
-    if (!button) return;
-    if (playingButton === button) { stop(); return; }
-    stop();
-    button.disabled = true;
-    fetch("/preview?artist=" + encodeURIComponent(button.dataset.artist) +
-          "&title=" + encodeURIComponent(button.dataset.title), { credentials: "same-origin" })
-      .then(function (response) { return response.json(); })
-      .then(function (data) {
-        button.disabled = false;
-        if (!data.url) { button.textContent = "אין קטע"; button.disabled = true; return; }
-        player.src = data.url;
-        playingButton = button;
-        button.classList.add("playing");
-        return player.play();
-      })
-      .catch(function () { button.disabled = false; });
-  });
-})();
-"""
-
 # העתקת כרטיס השיתוף של הסטטיסטיקות
 COPY_JS = """
 (function () {
@@ -715,12 +677,6 @@ def track_row(track, checkbox=False, feat=None):
     if feat:
         attrs += f' data-bpm="{feat.get("tempo") or 0}" data-energy="{feat.get("energy") or 0}" data-valence="{feat.get("valence") or 0}"'
         info = describe(feat)
-    # קטע של 30 שניות נטען רק בלחיצה, לפי האמן הראשון ושם השיר
-    first_artist = track["artists"][0][1] if track.get("artists") else track["artist"]
-    play = (
-        f'<button type="button" class="play" data-artist="{escape(first_artist)}" '
-        f'data-title="{escape(track["name"])}" aria-label="השמעת קטע של 30 שניות">▶</button>'
-    )
     moves = (
         '<span class="moves">'
         '<button type="button" class="move" data-dir="-1" aria-label="העברה למעלה">▲</button>'
@@ -730,7 +686,7 @@ def track_row(track, checkbox=False, feat=None):
         f"<li{attrs}>{check}{spotify_link('', 'album', track.get('album_id'), cover(track.get('image', '')))}"
         f"<div class=\"info\"><div class=\"title\">{spotify_link(track['name'], 'track', track.get('id'))}</div>"
         f"<div class=\"sub\">{artist_links(track)}{(' · ' + escape(info)) if info else ''}</div></div>"
-        f"{play}{moves}</li>"
+        f"{moves}</li>"
     )
 
 
@@ -1303,6 +1259,19 @@ def share_card_svg(title, lines):
     )
 
 
+def playlist_size(playlist):
+    """מספר השירים בפלייליסט. ספוטיפיי קוראת לשדה הזה tracks בתשובות ישנות ו-items בחדשות."""
+    block = playlist.get("items") or playlist.get("tracks") or {}
+    return block.get("total") or 0
+
+
+def playlist_item_track(item):
+    """השיר בשורה של פלייליסט, או None אם הוא לא זמין. השדה נקרא track בתשובות ישנות ו-item בחדשות."""
+    if not item:
+        return None
+    return item.get("item") or item.get("track")
+
+
 def app_playlists(sp):
     """הפלייליסטים של המשתמש שנוצרו בפלייליסטור. לפי הבעלות והתיאור שהאפליקציה כותבת."""
     uid = user_id(sp)
@@ -1333,7 +1302,7 @@ def playlist_tracks(sp, playlist_id, limit=MAX_TRACKS * 2):
     tracks, offset = [], 0
     while offset < limit:
         block = sp.playlist_items(playlist_id, limit=100, offset=offset, additional_types=("track",))
-        tracks += [item.get("track") for item in block["items"]]
+        tracks += [playlist_item_track(item) for item in block["items"]]
         if not block.get("next"):
             break
         offset += 100
@@ -1371,7 +1340,7 @@ def my_playlists():
             f"<li>{cover(image_url(p.get('images')))}"
             f'<div class="info"><div class="title"><a class="sp" href="/playlist/{escape(p["id"])}">'
             f'{escape(p["name"])}</a></div>'
-            f'<div class="sub">{p["tracks"]["total"]} שירים</div></div></li>'
+            f'<div class="sub">{playlist_size(p)} שירים</div></div></li>'
             for p in playlists
         )
         body = f'<ul class="list">{rows}</ul>'
@@ -1430,7 +1399,7 @@ def edit_playlist(playlist_id):
     rows = "".join(playlist_row(playlist_id, i, t, len(tracks), token) for i, t in enumerate(tracks))
     return page(
         f"<h1>{escape(playlist['name'])}</h1>"
-        f'<p class="note">{playlist["tracks"]["total"]} שירים. הזיזו שירים למעלה ולמטה, או הסירו אותם.</p>'
+        f'<p class="note">{playlist_size(playlist)} שירים. הזיזו שירים למעלה ולמטה, או הסירו אותם.</p>'
         f'<form method="post" action="/playlist/{escape(playlist_id)}/rename" class="toolbar">'
         f'<input type="hidden" name="csrf" value="{token}">'
         f'<label class="field">שם חדש<input type="text" name="name" value="{escape(playlist["name"])}" maxlength="100"></label>'
@@ -1468,7 +1437,7 @@ def remove_from_playlist(playlist_id):
     playlist, error = editable_or_404(sp, playlist_id)
     if error:
         return error
-    position = parse_position(request.form.get("position"), playlist["tracks"]["total"])
+    position = parse_position(request.form.get("position"), playlist_size(playlist))
     uri = request.form.get("uri", "")
     if position is not None and uri.startswith("spotify:track:"):
         # ספוטיפיי מסיר רק אם השיר נמצא במקום הזה, כך שלא נמחק שיר אחר בטעות
@@ -1484,7 +1453,7 @@ def move_in_playlist(playlist_id):
     playlist, error = editable_or_404(sp, playlist_id)
     if error:
         return error
-    total = playlist["tracks"]["total"]
+    total = playlist_size(playlist)
     position = parse_position(request.form.get("position"), total)
     direction = request.form.get("direction")
     # ספוטיפיי מקבל את המקום שלפניו מכניסים, לפי הרשימה לפני ההזזה
@@ -1687,7 +1656,7 @@ def render_preview(tracks, token, criteria, title, names):
     return page(
         f"<h1>{len(tracks)} שירים בשבילך</h1>"
         '<p class="note">בטלו את הסימון בשירים שלא מתאימים, העבירו שירים למעלה ולמטה, ואז שמרו. '
-        "לחיצה על ▶ משמיעה קטע של 30 שניות.</p>"
+        "לשמיעה, לחצו על שם השיר ופתחו אותו בספוטיפיי.</p>"
         '<form method="post" action="/save">'
         f'<input type="hidden" name="csrf" value="{csrf_token()}">'
         f'<input type="hidden" name="theme" value="{escape(theme or "")}">'
@@ -1711,7 +1680,7 @@ def render_preview(tracks, token, criteria, title, names):
         "</div>"
         "</form>"
         '<p><a href="/build">התחלה מחדש</a></p>',
-        theme=theme, images=covers or None, script=NAME_JS + SORT_JS + PLAY_JS,
+        theme=theme, images=covers or None, script=NAME_JS + SORT_JS,
     )
 
 
@@ -1737,14 +1706,6 @@ def build_more():
     title = request.form.get("title", "").strip()[:100] or names[0]
     token = remember_preview(preview["uid"], preview["criteria"], tracks)
     return render_preview(tracks, token, preview["criteria"], title, names)
-
-
-@app.route("/preview")
-def preview():
-    """קטע של 30 שניות לשיר, מ-Deezer. רק למשתמש מחובר. לא משתמש במכסת ספוטיפיי."""
-    if not session.get("token_info"):
-        return jsonify(url=""), 401
-    return jsonify(url=preview_url(request.args.get("artist", ""), request.args.get("title", "")))
 
 
 @app.route("/save", methods=["POST"])
