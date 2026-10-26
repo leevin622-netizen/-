@@ -75,7 +75,8 @@ def main():
 
     for number, term in enumerate(terms, 1):
         label = f"[{number}/{len(terms)}] {term}"
-        if index_store.load_term(term):
+        # מונח שנבחר בשם נבנה מחדש, גם אם כבר יש לו אינדקס (למשל אחרי הוספת מילים נרדפות)
+        if index_store.load_term(term) and term not in only:
             print(f"{label}: כבר באינדקס, מדלגים")
             continue
         started = time.time()

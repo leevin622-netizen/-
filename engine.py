@@ -1,5 +1,6 @@
 import random
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from spotipy.exceptions import SpotifyException
@@ -14,6 +15,17 @@ PAGE_SIZE = 10
 MAX_PAGES = 20
 # מכמה עמודים ראשונים מגרילים נקודת התחלה, כדי שכל פלייליסט ייצא שונה
 RANDOM_START_PAGES = 3
+# כמה מונחים נחפש במקביל. יותר מזה מתקרב להגבלת הבקשות של ספוטיפיי
+TERM_WORKERS = 3
+# מונחים דלים (כמו "sad" או "psytrance") מקבלים עוד חיפושים עם מילים נרדפות, כשהתוצאות מעטות
+TERM_ALIASES = {
+    "sad": ["sad songs", "heartbreak"],
+    "psytrance": ["goa trance", "psychedelic trance"],
+    "breakup": ["heartbreak", "sad songs"],
+    "ballad": ["love ballad", "power ballad"],
+    "nostalgia": ["throwback", "nostalgic"],
+    "sing along": ["sing along songs"],
+}
 
 GENRE_HINTS = {
     "שמח": ["pop", "dance", "funk"],
@@ -139,6 +151,20 @@ def passes_language(track, language):
     return True
 
 
+def album_year(track):
+    """שנת היציאה של האלבום, או None. ספוטיפיי נותן תאריך מלא, שנה בלבד, או שנה וחודש."""
+    date = (track.get("album") or {}).get("release_date") or ""
+    return int(date[:4]) if date[:4].isdigit() else None
+
+
+def passes_years(track, years):
+    """years הוא (מ-שנה, עד-שנה) או None. שיר בלי שנה ידועה לא עובר סינון לפי שנה."""
+    if not years:
+        return True
+    year = album_year(track)
+    return year is not None and years[0] <= year <= years[1]
+
+
 def to_result(track):
     return {
         "id": track.get("id"),
@@ -148,6 +174,8 @@ def to_result(track):
         "artists": [(a["id"], a["name"]) for a in track["artists"]],
         "uri": track["uri"],
         "image": album_image(track),
+        "duration": track.get("duration_ms") or 0,
+        "year": album_year(track) or "",
     }
 
 
@@ -162,7 +190,11 @@ def search_page(sp, query, page):
     return response["tracks"]["items"]
 
 
-def collect_for_query(sp, query, language, wanted):
+def accepted(track, language, years):
+    return passes_language(track, language) and passes_years(track, years)
+
+
+def collect_for_query(sp, query, language, wanted, years=None):
     """אוסף עד wanted שירים לשאילתה, החל מעמוד אקראי."""
     start = random.randrange(RANDOM_START_PAGES)
     tracks = []
@@ -172,30 +204,38 @@ def collect_for_query(sp, query, language, wanted):
             items = search_page(sp, query, page)
             if not items:
                 break
-            tracks += [t for t in items if t and passes_language(t, language)]
+            tracks += [t for t in items if t and accepted(t, language, years)]
             if len(tracks) >= wanted:
                 return tracks
     return tracks
 
 
-def collect_for_term(sp, term, language, wanted):
+def collect_for_term(sp, term, language, wanted, years=None):
     """קודם מהאינדקס המקומי (ראה build_index.py), ואם אין בו שירים מתאימים, מחפש בספוטיפיי."""
-    indexed = [t for t in index_store.load_term(term) if passes_language(t, language)]
+    indexed = [t for t in index_store.load_term(term) if accepted(t, language, years)]
     if indexed:
         return indexed
     try:
-        return search_term(sp, term, language, wanted)
+        return search_term(sp, term, language, wanted, years)
     except (SpotifyException, requests.RequestException) as error:
         # ספוטיפיי מוגבל או לא זמין: מדלגים על המונח הזה, והשאר ממשיכים לעבוד
         print(f"[פלייליסטור] מדלגים על {term}: {error}")
         return []
 
 
-def search_term(sp, term, language, wanted):
-    """קודם מחפש לפי ז'אנר אמיתי בספוטיפיי, ואם אין כזה ז'אנר, לפי מילת חיפוש רגילה."""
-    tracks = collect_for_query(sp, f'genre:"{term}"', language, wanted)
+def search_term(sp, term, language, wanted, years=None):
+    """
+    קודם מחפש לפי ז'אנר אמיתי בספוטיפיי, ואם אין כזה ז'אנר, לפי מילת חיפוש רגילה.
+    אם עדיין מעט מדי שירים, מוסיפים את המילים הנרדפות של המונח (TERM_ALIASES).
+    """
+    tracks = collect_for_query(sp, f'genre:"{term}"', language, wanted, years)
     if not tracks:
-        tracks = collect_for_query(sp, term, language, wanted)
+        tracks = collect_for_query(sp, term, language, wanted, years)
+    for alias in TERM_ALIASES.get(term, []):
+        if len(tracks) >= wanted:
+            break
+        known = {t["uri"] for t in tracks}
+        tracks += [t for t in collect_for_query(sp, alias, language, wanted, years) if t["uri"] not in known]
     return tracks
 
 
@@ -217,7 +257,7 @@ def pick(pools, count, seen):
     return results
 
 
-def find_personal_tracks(sp, language, count, seen):
+def find_personal_tracks(sp, language, count, seen, years=None):
     """שירים של האמנים המועדפים על המשתמש."""
     artists = sp.current_user_top_artists(limit=20, time_range="medium_term")["items"]
     random.shuffle(artists)
@@ -226,7 +266,7 @@ def find_personal_tracks(sp, language, count, seen):
         items = search_page(sp, f'artist:"{artist["name"]}"', 0)
         pools.append([
             t for t in items
-            if t and passes_language(t, language)
+            if t and accepted(t, language, years)
             and any(a["id"] == artist["id"] for a in t["artists"])
         ])
     return pick(pools, count, seen)
@@ -267,13 +307,16 @@ def filter_by_vibe(pools, mood, event, wanted, ranges=None):
     return filtered
 
 
-def find_tracks(sp, genre, mood, event, language, count, personal=False, ranges=None):
-    """מחזיר רשימת שירים (dict עם name, artist, uri) לפי הקריטריונים."""
-    seen = set()
+def find_tracks(sp, genre, mood, event, language, count, personal=False, ranges=None, years=None, exclude=()):
+    """
+    מחזיר רשימת שירים (dict עם name, artist, uri) לפי הקריטריונים.
+    exclude: כתובות של שירים שכבר בפלייליסט, כדי לא להביא אותם שוב (הוסף עוד שירים).
+    """
+    seen = set(exclude)
     results = []
     if personal:
         try:
-            results = find_personal_tracks(sp, language, count // 2, seen)
+            results = find_personal_tracks(sp, language, count // 2, seen, years)
         except (SpotifyException, requests.RequestException) as error:
             # האמנים המועדפים הם תוספת. אם ספוטיפיי לא זמין, ממשיכים בלעדיהם
             print(f"[פלייליסטור] מדלגים על האמנים המועדפים: {error}")
@@ -282,7 +325,9 @@ def find_tracks(sp, genre, mood, event, language, count, personal=False, ranges=
     wanted = count - len(results)
     # כל מונח אוסף בערך פי שניים ממה שצריך, כדי שיהיה ממה לבחור
     per_term = max(PAGE_SIZE, -(-wanted * 2 // len(terms)))
-    pools = [collect_for_term(sp, term, language, per_term) for term in terms]
+    # המונחים נאספים במקביל, כך שבקשה לכמה ז'אנרים לא מחכה לכל אחד בתורו
+    with ThreadPoolExecutor(max_workers=TERM_WORKERS) as pool:
+        pools = list(pool.map(lambda term: collect_for_term(sp, term, language, per_term, years), terms))
     pools = filter_by_vibe(pools, mood, event, wanted, ranges)
     results += pick(pools, wanted, seen)
     random.shuffle(results)
@@ -314,7 +359,7 @@ def filter_liked_by_vibe(scored, mood, event, ranges=None):
     return fitting
 
 
-def find_liked_tracks(saved, artist_tags, genre, mood, event, language, count, ranges=None):
+def find_liked_tracks(saved, artist_tags, genre, mood, event, language, count, ranges=None, years=None, exclude=()):
     """
     פלייליסט מתוך השירים שאהבת. artist_tags: {id של אמן: [ז'אנרים ותגיות]}.
     אם בחרת ז'אנר, נשארים רק שירים שהאמן שלהם מתאים לו. מצב רוח ואירוע מעדיפים שירים מתאימים.
@@ -323,7 +368,9 @@ def find_liked_tracks(saved, artist_tags, genre, mood, event, language, count, r
     scored = []
     for item in saved:
         track = item["track"]
-        if not track.get("uri", "").startswith("spotify:track:") or not passes_language(track, language):
+        if track.get("uri") in exclude or not track.get("uri", "").startswith("spotify:track:"):
+            continue
+        if not accepted(track, language, years):
             continue
         tags = [t for a in track["artists"] for t in artist_tags.get(a.get("id"), [])]
         if genre and not matches(genre, tags):

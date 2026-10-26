@@ -1,8 +1,9 @@
 import os
 import secrets
 import time
+from collections import Counter
 from html import escape
-from flask import Flask, redirect, request, session
+from flask import Flask, g, has_request_context, jsonify, redirect, request, session
 from dotenv import load_dotenv
 import requests
 import spotipy
@@ -15,9 +16,10 @@ import favourites
 import json
 from urllib.parse import urlencode
 from playlist_names import suggest_names
+from previews import preview_url
 from engine import (
     GENRE_HINTS, EVENT_HINTS, EVENT_GROUPS, LANGUAGES, HEBREW_GENRES, WORLD_GENRES,
-    find_tracks, find_liked_tracks, create_playlist, to_result,
+    find_tracks, find_liked_tracks, create_playlist, to_result, album_year,
 )
 from vibes import describe, get_features
 
@@ -27,6 +29,11 @@ app = Flask(__name__)
 # בלי FLASK_SECRET ב-.env נוצר מפתח אקראי, וההתחברות תתאפס בכל הפעלה מחדש של השרת
 app.secret_key = os.getenv("FLASK_SECRET") or secrets.token_hex(32)
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+# כשהאפליקציה נגישה דרך https (למשל כתובת קבועה לחברים), הקוקי נשלח רק ב-https
+PUBLIC_HTTPS = (os.getenv("SPOTIFY_REDIRECT_URI") or "").startswith("https://")
+app.config["SESSION_COOKIE_SECURE"] = PUBLIC_HTTPS
+if not os.getenv("FLASK_SECRET"):
+    print("[פלייליסטור] אין FLASK_SECRET ב-.env, ולכן כל הפעלה מחדש של השרת מנתקת את כולם")
 
 
 def csrf_token():
@@ -56,6 +63,8 @@ def security_headers(response):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
     response.headers["Referrer-Policy"] = "same-origin"
+    if PUBLIC_HTTPS:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
 
 # user-follow-modify ו-user-library-modify מאפשרים לשמור אמנים ושירים בחשבון. שינוי ההרשאות דורש התחברות מחדש
@@ -160,6 +169,30 @@ h2 { font-size: 19px; margin: 22px 0 10px; text-shadow: 0 2px 12px rgba(0, 0, 0,
   border-radius: 999px; border-color: var(--accent);
 }
 .vibe-switch .btn { width: auto; padding: 5px 10px; font-size: 13px; }
+.warn {
+  background: #3d2e0b; color: #ffe9b0; border-radius: 12px; padding: 12px 16px;
+  margin-bottom: 16px; font-size: 14px;
+}
+.moves { display: inline-flex; flex-direction: column; gap: 2px; flex: none; }
+.list .move, .list .play {
+  width: auto; padding: 2px 9px; font-size: 13px; line-height: 1.4; border-radius: 999px;
+  background: var(--card-hover); color: var(--text); border: 1px solid var(--border); cursor: pointer;
+}
+.list .play { padding: 6px 10px; font-size: 14px; }
+.list .play.playing { background: var(--accent); color: var(--on-accent); }
+.list .play:disabled { opacity: .5; cursor: default; }
+.bars { display: grid; gap: 8px; margin-bottom: 8px; }
+.bar-row { display: grid; grid-template-columns: minmax(90px, 150px) 1fr 44px; gap: 10px; align-items: center; font-size: 14px; }
+.bar-row .track { display: block; background: var(--border); border-radius: 999px; height: 12px; overflow: hidden; }
+.bar-row .fill { display: block; background: var(--accent); height: 100%; border-radius: 999px; }
+.bar-row .num { color: var(--muted); text-align: end; }
+.share { border-radius: 16px; padding: 20px; background: linear-gradient(135deg, var(--accent), #1b1b1b); color: #fff; }
+.share h2 { margin-top: 0; text-shadow: none; }
+.share p { margin: 6px 0; font-size: 16px; }
+textarea.copy {
+  width: 100%; min-height: 120px; margin: 12px 0; padding: 10px; font-size: 14px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+}
 """ + themes.BACKGROUND_CSS
 
 # מיון טבלה בלחיצה על כותרת, וסינון לפי טקסט חופשי
@@ -175,31 +208,102 @@ if (nameButton) {
 }
 """
 
-# מיון התצוגה המקדימה לפי BPM, אנרגיה או שמחה, ועירבוב
+# מיון התצוגה המקדימה לפי שם, אמן, אורך, שנה, BPM, אנרגיה או שמחה. מעבירים שירים למעלה ולמטה, ומערבבים
+# כל קטע עטוף בפונקציה, כדי שהמשתנים לא יתנגשו עם קטעי JavaScript אחרים בעמוד
 SORT_JS = """
-var list = document.querySelector("ul.list"), sortSelect = document.getElementById("sort");
-var shuffleButton = document.getElementById("shuffle");
-if (list && sortSelect) {
+(function () {
+  var list = document.getElementById("playlist"), sortSelect = document.getElementById("sort");
+  var shuffleButton = document.getElementById("shuffle");
+  // סוג המיון לכל שדה: טקסט, מספר שעולה, או מספר שיורד
+  var sortKinds = { name: "text", artist: "text", duration: "asc", year: "asc", bpm: "desc", energy: "desc", valence: "desc" };
+  function number(value, kind) {
+    var n = parseFloat(value);
+    if (!isNaN(n)) return n;
+    return kind === "asc" ? Infinity : -Infinity;
+  }
+  if (!list) return;
   var originalOrder = Array.from(list.children);
-  sortSelect.addEventListener("change", function () {
-    var key = sortSelect.value;
-    var items = key ? Array.from(list.children).sort(function (a, b) {
-      return parseFloat(b.dataset[key]) - parseFloat(a.dataset[key]);
-    }) : originalOrder;
-    items.forEach(function (li) { list.appendChild(li); });
-  });
-}
-if (list && shuffleButton) {
-  shuffleButton.addEventListener("click", function () {
-    var items = Array.from(list.children);
-    for (var i = items.length - 1; i > 0; i--) {
-      var j = Math.floor(Math.random() * (i + 1)), t = items[i];
-      items[i] = items[j]; items[j] = t;
-    }
-    items.forEach(function (li) { list.appendChild(li); });
+  if (sortSelect) {
+    sortSelect.addEventListener("change", function () {
+      var key = sortSelect.value, kind = sortKinds[key];
+      var items = key ? Array.from(list.children).sort(function (a, b) {
+        var x = a.dataset[key] || "", y = b.dataset[key] || "";
+        if (kind === "text") return x.localeCompare(y, "he");
+        var nx = number(x, kind), ny = number(y, kind);
+        if (nx === ny) return 0;
+        return (kind === "asc" ? nx < ny : nx > ny) ? -1 : 1;
+      }) : originalOrder;
+      items.forEach(function (li) { list.appendChild(li); });
+    });
+  }
+  list.addEventListener("click", function (event) {
+    var button = event.target.closest(".move");
+    if (!button) return;
+    var li = button.closest("li"), dir = Number(button.dataset.dir);
+    if (dir < 0 && li.previousElementSibling) list.insertBefore(li, li.previousElementSibling);
+    if (dir > 0 && li.nextElementSibling) list.insertBefore(li.nextElementSibling, li);
     if (sortSelect) sortSelect.value = "";
   });
-}
+  if (shuffleButton) {
+    shuffleButton.addEventListener("click", function () {
+      var items = Array.from(list.children);
+      for (var i = items.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1)), t = items[i];
+        items[i] = items[j]; items[j] = t;
+      }
+      items.forEach(function (li) { list.appendChild(li); });
+      if (sortSelect) sortSelect.value = "";
+    });
+  }
+})();
+"""
+
+# השמעה של קטע של 30 שניות. נטען מ-Deezer רק כשלוחצים, וקטע אחד מתנגן בכל פעם
+PLAY_JS = """
+(function () {
+  var list = document.getElementById("playlist");
+  if (!list) return;
+  var player = new Audio(), playingButton = null;
+  function stop() {
+    player.pause();
+    if (playingButton) playingButton.classList.remove("playing");
+    playingButton = null;
+  }
+  player.addEventListener("ended", stop);
+  list.addEventListener("click", function (event) {
+    var button = event.target.closest(".play");
+    if (!button) return;
+    if (playingButton === button) { stop(); return; }
+    stop();
+    button.disabled = true;
+    fetch("/preview?artist=" + encodeURIComponent(button.dataset.artist) +
+          "&title=" + encodeURIComponent(button.dataset.title), { credentials: "same-origin" })
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        button.disabled = false;
+        if (!data.url) { button.textContent = "אין קטע"; button.disabled = true; return; }
+        player.src = data.url;
+        playingButton = button;
+        button.classList.add("playing");
+        return player.play();
+      })
+      .catch(function () { button.disabled = false; });
+  });
+})();
+"""
+
+# העתקת כרטיס השיתוף של הסטטיסטיקות
+COPY_JS = """
+(function () {
+  var copyButton = document.getElementById("copy-card"), box = document.getElementById("card-text");
+  if (!copyButton || !box) return;
+  copyButton.addEventListener("click", function () {
+    box.select();
+    function done() { copyButton.textContent = "✅ הועתק"; }
+    if (navigator.clipboard) { navigator.clipboard.writeText(box.value).then(done); }
+    else { document.execCommand("copy"); done(); }
+  });
+})();
 """
 
 # תצוגת מספרים חיה לטווחים הידניים
@@ -428,7 +532,9 @@ def login_images():
 
 
 def page(body, title="פלייליסטור", wide=False, script="", theme=None, images=None):
-    vibe = current_vibe()
+    # כשספוטיפיי מוגבל, לא מבקשים ממנו עוד נתונים בשביל העיצוב
+    limited = time.time() < _limit["until"]
+    vibe = {"theme": "default", "images": []} if limited else current_vibe()
     theme = theme or vibe["theme"]
     images = vibe["images"] if images is None else images
     user = session.get("user_name")
@@ -443,6 +549,7 @@ def page(body, title="פלייליסטור", wide=False, script="", theme=None, 
         + themes.background_html(images, theme)
         + f'<div class="wrap{" wide" if wide else ""}">'
         f'<header><div class="brand">{switch}<a class="logo" href="/">🎧 פלייליסטור</a></div>{user_html}</header>'
+        + notices()
         + body
         + "</div>"
         + (f"<script>{script}</script>" if script else "")
@@ -547,15 +654,82 @@ def track_row(track, checkbox=False, feat=None):
         f'<input type="checkbox" name="uri" value="{escape(track["uri"])}" checked>' if checkbox else ""
     )
     # הנתונים מאפשרים מיון בדף, והתיאור מוצג ליד שם האמן
-    attrs, info = "", ""
+    sort_data = {
+        "name": track["name"].lower(), "artist": track["artist"].lower(),
+        "duration": track.get("duration") or 0, "year": track.get("year") or "",
+    }
+    attrs = "".join(f' data-{key}="{escape(str(value))}"' for key, value in sort_data.items())
+    info = ""
     if feat:
-        attrs = f' data-bpm="{feat.get("tempo") or 0}" data-energy="{feat.get("energy") or 0}" data-valence="{feat.get("valence") or 0}"'
+        attrs += f' data-bpm="{feat.get("tempo") or 0}" data-energy="{feat.get("energy") or 0}" data-valence="{feat.get("valence") or 0}"'
         info = describe(feat)
+    # קטע של 30 שניות נטען רק בלחיצה, לפי האמן הראשון ושם השיר
+    first_artist = track["artists"][0][1] if track.get("artists") else track["artist"]
+    play = (
+        f'<button type="button" class="play" data-artist="{escape(first_artist)}" '
+        f'data-title="{escape(track["name"])}" aria-label="השמעת קטע של 30 שניות">▶</button>'
+    )
+    moves = (
+        '<span class="moves">'
+        '<button type="button" class="move" data-dir="-1" aria-label="העברה למעלה">▲</button>'
+        '<button type="button" class="move" data-dir="1" aria-label="העברה למטה">▼</button></span>'
+    )
     return (
         f"<li{attrs}>{check}{spotify_link('', 'album', track.get('album_id'), cover(track.get('image', '')))}"
         f"<div class=\"info\"><div class=\"title\">{spotify_link(track['name'], 'track', track.get('id'))}</div>"
-        f"<div class=\"sub\">{artist_links(track)}{(' · ' + escape(info)) if info else ''}</div></div></li>"
+        f"<div class=\"sub\">{artist_links(track)}{(' · ' + escape(info)) if info else ''}</div></div>"
+        f"{play}{moves}</li>"
     )
+
+
+# ספוטיפיי מגביל את האפליקציה כולה. כשהוא עונה "יותר מדי בקשות", זוכרים עד מתי, ומציגים את השעה לכולם
+_limit = {"until": 0.0}
+
+
+def retry_after(error):
+    """כמה שניות ספוטיפיי מבקש להמתין. בלי מספר, דקה. לא יותר משש שעות."""
+    try:
+        return min(max(int((error.headers or {}).get("Retry-After", 60)), 1), 6 * 60 * 60)
+    except (TypeError, ValueError):
+        return 60
+
+
+def remember_limit(error):
+    _limit["until"] = max(_limit["until"], time.time() + retry_after(error))
+
+
+def clock(timestamp):
+    return time.strftime("%H:%M", time.localtime(timestamp))
+
+
+def on_cache_stale(error, saved_at):
+    """
+    נתונים שמורים מוצגים במקום טעינה שנכשלה (library.on_stale).
+    מסמנים לעמוד הנוכחי מאיזו שעה הנתונים, ואם זו הגבלה, זוכרים אותה לכל העמודים.
+    """
+    if isinstance(error, spotipy.SpotifyException) and error.http_status == 429:
+        remember_limit(error)
+    if has_request_context():
+        g.stale_since = min(getattr(g, "stale_since", saved_at), saved_at)
+
+
+library.on_stale = on_cache_stale
+
+
+def notices():
+    """הודעות שמופיעות מעל כל עמוד: ספוטיפיי מוגבל, או נתונים ישנים שמוצגים."""
+    notes = []
+    if time.time() < _limit["until"]:
+        until = clock(_limit["until"])
+        notes.append(
+            f"ספוטיפיי הגביל את הבקשות לזמן מה. אפשר לנסות שוב אחרי {until}. "
+            "עד אז מוצגים הנתונים שנשמרו בפעם האחרונה, כשיש כאלה."
+        )
+    since = getattr(g, "stale_since", None) if has_request_context() else None
+    if since is not None:
+        when = clock(since)
+        notes.append(f"חלק מהנתונים מ-{when}, כי ספוטיפיי לא ענה. הם יתעדכנו כשהוא יחזור.")
+    return "".join(f'<div class="warn">{escape(note)}</div>' for note in notes)
 
 
 @app.errorhandler(spotipy.SpotifyException)
@@ -564,7 +738,9 @@ def spotify_error(error):
         session.pop("token_info", None)
         return redirect("/login")
     if error.http_status == 429:
-        return page("<p>ספוטיפיי קיבל יותר מדי בקשות. נסו שוב בעוד דקה.</p>"), 429
+        remember_limit(error)
+        # ההודעה עם השעה מופיעה מעל העמוד (notices), כאן רק מה שקרה
+        return page("<p>לא הצלחנו לטעון את העמוד כרגע. אפשר לחזור לדף הבית ולנסות שוב אחרי ההמתנה.</p>"), 429
     return page("<p>ספוטיפיי החזיר שגיאה. נסו שוב בעוד כמה רגעים.</p>"), 502
 
 
@@ -769,6 +945,7 @@ def home():
         + '<a href="/build">✨ צור פלייליסט חדש<small>לפי ז\'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a>'
         '<a href="/saved-tracks">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם מיון לפי אמן, השמעות, תאריך ועוד</small></a>'
         '<a href="/my-artists">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a>'
+        '<a href="/stats">📊 הסטטיסטיקות שלי<small>ז\'אנרים, עשורים, אמנים מובילים וכרטיס לשיתוף</small></a>'
         "</div>"
         '<p class="note">הנתונים נשמרים לכמה שעות כדי שהאפליקציה תהיה מהירה. '
         '<a href="/refresh">רענון נתונים מספוטיפיי</a></p>'
@@ -950,6 +1127,88 @@ def my_artists():
     )
 
 
+def bar_chart(rows):
+    """שורות (שם, כמות) כגרף עמודות אופקיות. העמודה הארוכה ביותר היא 100%."""
+    top = max((count for _, count in rows), default=1) or 1
+    return '<div class="bars">' + "".join(
+        f'<div class="bar-row"><span>{escape(label)}</span>'
+        f'<span class="track"><span class="fill" style="width:{count * 100 // top}%"></span></span>'
+        f'<span class="num">{count}</span></div>'
+        for label, count in rows
+    ) + "</div>"
+
+
+@app.route("/stats")
+def my_stats():
+    """גרף ז'אנרים ועשורים, האמנים הכי אהובים, וכרטיס טקסט לשיתוף. מבוסס על השירים שאהבתם."""
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+
+    uid = user_id(sp)
+    saved = library.cached(uid, "saved", lambda: library.all_saved_tracks(sp))
+    if not saved:
+        return page(
+            "<h1>הסטטיסטיקות שלי</h1>"
+            '<p class="note">עדיין אין שירים שאהבתם בספוטיפיי. שמרו כמה שירים, ואז תופיע כאן התמונה המלאה.</p>'
+        )
+    tags = liked_artist_tags(sp, uid, saved)
+
+    decades, artist_counts, names = Counter(), Counter(), {}
+    for item in saved:
+        track = item["track"]
+        year = album_year(track)
+        if year:
+            decades[year // 10 * 10] += 1
+        for a in track["artists"]:
+            if a.get("id"):
+                artist_counts[a["id"]] += 1
+                names[a["id"]] = a["name"]
+    # ז'אנר נספר לפי כמות השירים שאהבתם מהאמנים שלו, כדי שאמן שאוהבים הרבה ישפיע יותר
+    genre_counts = Counter()
+    for artist_id, count in artist_counts.items():
+        for tag in set(tags.get(artist_id, [])):
+            genre_counts[tag] += count
+
+    top_artists = [(names[i], c) for i, c in artist_counts.most_common(10)]
+    top_genres = [(GENRE_NAMES.get(tag, tag), c) for tag, c in genre_counts.most_common(10)]
+    decade_rows = [(f"שנות {decade}", c) for decade, c in sorted(decades.items())]
+
+    card_lines = [f"❤️ {len(saved)} שירים שאהבתי בפלייליסטור"]
+    if top_artists:
+        card_lines.append(f"🎤 האמן שאני הכי אוהב: {top_artists[0][0]}")
+    if top_genres:
+        card_lines.append(f"🎶 הז'אנר המוביל: {top_genres[0][0]}")
+    if decades:
+        best_decade = max(decades.items(), key=lambda kv: kv[1])[0]
+        card_lines.append(f"📅 העשור האהוב: שנות {best_decade}")
+    card_text = "\n".join(["🎧 הטעם המוזיקלי שלי"] + card_lines)
+
+    genres_html = (
+        bar_chart(top_genres) if top_genres
+        else '<p class="note">עוד אין מספיק תגיות ז\'אנר לאמנים שאהבתם.</p>'
+    )
+    return page(
+        "<h1>הסטטיסטיקות שלי</h1>"
+        + stat_boxes([("שירים שאהבתי", len(saved)), ("אמנים שונים", len(artist_counts))])
+        + "<h2>ז'אנרים שאתם הכי אוהבים</h2>"
+        + '<p class="note">לפי התגיות של האמנים שאהבתם. ככל שיש לכם יותר שירים מאמן, הוא שוקל יותר.</p>'
+        + genres_html
+        + "<h2>עשורים</h2>"
+        + (bar_chart(decade_rows) if decade_rows else '<p class="note">אין מידע על שנות היציאה.</p>')
+        + "<h2>האמנים שאהבתם הכי הרבה</h2>"
+        + bar_chart(top_artists)
+        + '<h2>כרטיס לשיתוף</h2>'
+        + '<div class="share"><h2>הטעם המוזיקלי שלי</h2>'
+        + "".join(f"<p>{escape(line)}</p>" for line in card_lines)
+        + "</div>"
+        + f'<textarea id="card-text" class="copy" readonly>{escape(card_text)}</textarea>'
+        + '<button type="button" class="btn secondary" id="copy-card">📋 העתק את הטקסט</button>'
+        + '<p><a href="/">חזרה לדף הבית</a></p>',
+        title="הסטטיסטיקות שלי", wide=True, script=COPY_JS,
+    )
+
+
 def _percent(value):
     try:
         return min(max(int(value), 0), 100)
@@ -999,6 +1258,10 @@ def build():
             '<label class="field">שפה<select name="language">'
             + options(LANGUAGES)
             + "</select></label>"
+            '<div class="toolbar">'
+            '<label class="field">שנת יציאה, מ-<input type="number" name="year_from" min="1900" max="2100" placeholder="למשל 1990"></label>'
+            '<label class="field">עד<input type="number" name="year_to" min="1900" max="2100" placeholder="למשל 2000"></label>'
+            "</div>"
             f'<label class="field">כמות שירים (5 עד {MAX_TRACKS})'
             f'<input name="count" type="number" value="20" min="5" max="{MAX_TRACKS}"></label>'
             '<label class="check"><input type="checkbox" name="personal" checked> שלב שירים של האמנים המועדפים עליי</label>'
@@ -1017,6 +1280,19 @@ def build():
         )
 
     # קלט מהטופס: מגבילים אורך, ומקבלים רק ערכים מהתפריטים
+    criteria = read_criteria()
+    started = time.time()
+    tracks = find_for(sp, criteria)
+    print(f"[פלייליסטור] נבנו {len(tracks)} שירים תוך {time.time() - started:.1f} שניות")
+    if not tracks:
+        return page('<p>לא נמצאו שירים. <a href="/build">נסו שילוב אחר</a>.</p>')
+    token = remember_preview(user_id(sp), criteria, tracks)
+    names = names_for(criteria)
+    return render_preview(tracks, token, criteria, names[0], names)
+
+
+def read_criteria():
+    """הבחירות מהטופס, אחרי בדיקה: רק ערכים מהתפריטים, ומספרים בטווח."""
     genre = (request.form.get("genre", "").strip() or request.form.get("genre_choice", ""))[:60]
     source = "liked" if request.form.get("source") == "liked" else "search"
     mood = request.form.get("mood", "")
@@ -1025,55 +1301,152 @@ def build():
     event = event if event in EVENT_HINTS else ""
     language = request.form.get("language", "ביחד")
     language = language if language in LANGUAGES else "ביחד"
+    # ז'אנר ישראלי מחפש שירים בעברית, אלא אם בחרת שפה אחרת במפורש
+    if language == "ביחד" and (genre.startswith("israeli") or genre == "mizrahi"):
+        language = "עברית"
     try:
         count = min(max(int(request.form.get("count", 20)), 5), MAX_TRACKS)
     except ValueError:
         count = 20
-    personal = "personal" in request.form
-    ranges = read_ranges()
-    # ז'אנר ישראלי מחפש שירים בעברית, אלא אם בחרת שפה אחרת במפורש
-    if language == "ביחד" and (genre.startswith("israeli") or genre == "mizrahi"):
-        language = "עברית"
+    return {
+        "source": source, "genre": genre, "mood": mood, "event": event, "language": language,
+        "count": count, "personal": "personal" in request.form,
+        "ranges": read_ranges(), "years": read_years(),
+    }
 
-    if source == "liked":
+
+def read_years():
+    """טווח שנות יציאה, למשל 1990 עד 2000. שנה אחת חסרה פותחת את הטווח. None אם לא הוזן כלום."""
+    def year(key):
+        try:
+            value = int(request.form.get(key, ""))
+        except ValueError:
+            return None
+        return value if 1900 <= value <= 2100 else None
+    low, high = year("year_from"), year("year_to")
+    if low is None and high is None:
+        return None
+    low, high = low or 1900, high or 2100
+    return (min(low, high), max(low, high))
+
+
+def find_for(sp, criteria, exclude=(), count=None):
+    """השירים לפי הבחירות. exclude: שירים שכבר יש בתצוגה, כדי לא לחזור עליהם."""
+    count = count or criteria["count"]
+    if criteria["source"] == "liked":
         uid = user_id(sp)
         saved = library.cached(uid, "saved", lambda: library.all_saved_tracks(sp))
         tags = liked_artist_tags(sp, uid, saved)
-        tracks = find_liked_tracks(saved, tags, genre, mood, event, language, count, ranges)
-    else:
-        tracks = find_tracks(sp, genre, mood, event, language, count, personal=personal, ranges=ranges)
-    if not tracks:
-        return page('<p>לא נמצאו שירים. <a href="/build">נסו שילוב אחר</a>.</p>')
+        return find_liked_tracks(
+            saved, tags, criteria["genre"], criteria["mood"], criteria["event"], criteria["language"],
+            count, criteria["ranges"], criteria["years"], exclude,
+        )
+    return find_tracks(
+        sp, criteria["genre"], criteria["mood"], criteria["event"], criteria["language"], count,
+        personal=criteria["personal"], ranges=criteria["ranges"], years=criteria["years"], exclude=exclude,
+    )
 
-    # תצוגה מקדימה: מורידים את מה שלא מתאים, ורק אז שומרים בספוטיפיי
-    # שם שמתאים לאווירה, ועוד כמה הצעות לכפתור "שם אחר"
-    names = suggest_names(genre, mood, event, GENRE_NAMES.get(genre, genre), from_liked=source == "liked")
-    title = names[0]
+
+def names_for(criteria):
+    """שם שמתאים לאווירה, ועוד כמה הצעות לכפתור "שם אחר"."""
+    return suggest_names(
+        criteria["genre"], criteria["mood"], criteria["event"],
+        GENRE_NAMES.get(criteria["genre"], criteria["genre"]), from_liked=criteria["source"] == "liked",
+    )
+
+
+# תצוגה מקדימה שנבנתה. "הוסף עוד שירים" צריך את השירים והבחירות המקוריות, ולכן הם נשמרים בזיכרון לשעה
+PREVIEW_SECONDS = 60 * 60
+PREVIEW_LIMIT = 100
+EXTRA_TRACKS = 10
+_previews = {}
+
+
+def remember_preview(uid, criteria, tracks):
+    now = time.time()
+    for token in [t for t, p in _previews.items() if now - p["at"] > PREVIEW_SECONDS]:
+        del _previews[token]
+    while len(_previews) >= PREVIEW_LIMIT:
+        del _previews[next(iter(_previews))]
+    token = secrets.token_urlsafe(16)
+    _previews[token] = {"uid": uid, "at": now, "criteria": criteria, "tracks": {t["uri"]: t for t in tracks}}
+    return token
+
+
+def preview_for(token):
+    """התצוגה המקדימה אם היא של המשתמש המחובר ועוד לא פגה. אחרת None."""
+    preview = _previews.get(token)
+    if not preview or preview["uid"] != session.get("user_id"):
+        return None
+    return preview
+
+
+def render_preview(tracks, token, criteria, title, names):
     feats = get_features([t["id"] for t in tracks if t.get("id")])
     rows = "".join(track_row(t, checkbox=True, feat=feats.get(t.get("id"))) for t in tracks)
-    theme = themes.theme_for_choice(genre, mood, event)
+    theme = themes.theme_for_choice(criteria["genre"], criteria["mood"], criteria["event"])
     covers = list(dict.fromkeys(t["image"] for t in tracks if t["image"]))[:BACKGROUND_IMAGES]
     return page(
         f"<h1>{len(tracks)} שירים בשבילך</h1>"
-        '<p class="note">בטלו את הסימון בשירים שלא מתאימים, ואז שמרו.</p>'
+        '<p class="note">בטלו את הסימון בשירים שלא מתאימים, העבירו שירים למעלה ולמטה, ואז שמרו. '
+        "לחיצה על ▶ משמיעה קטע של 30 שניות.</p>"
         '<form method="post" action="/save">'
         f'<input type="hidden" name="csrf" value="{csrf_token()}">'
         f'<input type="hidden" name="theme" value="{escape(theme or "")}">'
+        f'<input type="hidden" name="preview" value="{escape(token)}">'
         '<div class="toolbar">'
         f'<label class="field">שם הפלייליסט<input type="text" id="title" name="title" value="{escape(title)}" maxlength="100"></label>'
         f'<button type="button" class="btn secondary" id="other-name" data-names="{escape(json.dumps(names, ensure_ascii=False))}">🔄 שם אחר</button>'
         "</div>"
         '<div class="toolbar">'
         '<label class="field">מיון<select id="sort">'
-        '<option value="">הסדר המקורי</option><option value="bpm">קצב (BPM)</option>'
-        '<option value="energy">אנרגיה</option><option value="valence">שמחה</option></select></label>'
+        '<option value="">הסדר המקורי</option>'
+        '<option value="name">שם השיר</option><option value="artist">שם האמן</option>'
+        '<option value="duration">אורך</option><option value="year">שנת יציאה (הישנים קודם)</option>'
+        '<option value="bpm">קצב (BPM)</option><option value="energy">אנרגיה</option>'
+        '<option value="valence">שמחה</option></select></label>'
         '<button type="button" class="btn secondary" id="shuffle">🔀 ערבב</button></div>'
-        f'<ul class="list">{rows}</ul><br>'
+        f'<ul class="list" id="playlist">{rows}</ul><br>'
+        '<div class="toolbar">'
         '<button class="btn" type="submit">שמור בספוטיפיי</button>'
+        f'<button class="btn secondary" type="submit" formaction="/build/more">➕ הוסף עוד {EXTRA_TRACKS} שירים</button>'
+        "</div>"
         "</form>"
         '<p><a href="/build">התחלה מחדש</a></p>',
-        theme=theme, images=covers or None, script=NAME_JS + SORT_JS,
+        theme=theme, images=covers or None, script=NAME_JS + SORT_JS + PLAY_JS,
     )
+
+
+@app.route("/build/more", methods=["POST"])
+def build_more():
+    """
+    מוסיף שירים לתצוגה המקדימה. השירים שנשארו מסומנים נשמרים בסדר שסידרתם.
+    שירים שהסרתם לא חוזרים, וגם לא שירים שכבר נבחרו.
+    """
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    preview = preview_for(request.form.get("preview", ""))
+    if preview is None:
+        return redirect("/build")
+    known = preview["tracks"]
+    kept = [known[uri] for uri in request.form.getlist("uri") if uri in known]
+    extra = find_for(sp, preview["criteria"], exclude=set(known), count=EXTRA_TRACKS)
+    tracks = (kept + extra)[:MAX_TRACKS]
+    if not tracks:
+        return page('<p>אין שירים להציג. <a href="/build">חזרה ליצירת פלייליסט</a>.</p>')
+    names = names_for(preview["criteria"])
+    title = request.form.get("title", "").strip()[:100] or names[0]
+    token = remember_preview(preview["uid"], preview["criteria"], tracks)
+    return render_preview(tracks, token, preview["criteria"], title, names)
+
+
+@app.route("/preview")
+def preview():
+    """קטע של 30 שניות לשיר, מ-Deezer. רק למשתמש מחובר. לא משתמש במכסת ספוטיפיי."""
+    if not session.get("token_info"):
+        return jsonify(url=""), 401
+    return jsonify(url=preview_url(request.args.get("artist", ""), request.args.get("title", "")))
 
 
 @app.route("/save", methods=["POST"])

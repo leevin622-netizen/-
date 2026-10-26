@@ -1,6 +1,10 @@
 import os
 import pickle
 import time
+
+import requests
+from spotipy.exceptions import SpotifyException
+
 from engine import is_hebrew
 
 # ספוטיפיי מחזיר עד 50 פריטים בכל בקשה
@@ -35,6 +39,11 @@ def _save_to_disk(user_id):
         pickle.dump(data, f)
 
 
+# מופעל כשנתונים ישנים מוצגים במקום טעינה שנכשלה. מקבל את השגיאה ואת מועד השמירה של הנתונים.
+# האפליקציה מגדירה את זה, כדי שתוכל להציג למשתמש הודעה. בלי הגדרה, כלום לא קורה.
+on_stale = None
+
+
 def cached(user_id, key, loader):
     if (user_id, key) not in _cache:
         _load_from_disk(user_id)
@@ -42,7 +51,16 @@ def cached(user_id, key, loader):
     if entry and time.time() - entry[0] < CACHE_SECONDS:
         return entry[1]
     started = time.time()
-    value = loader()
+    try:
+        value = loader()
+    except (SpotifyException, requests.RequestException) as error:
+        # ספוטיפיי מגביל או לא עונה: מציגים את מה שנשמר בפעם האחרונה, אם יש כזה.
+        # אבל התחברות שפגה (401/403) צריכה להמשיך להיזרק, כדי שהמשתמש יתחבר מחדש
+        if entry is None or (isinstance(error, SpotifyException) and error.http_status in (401, 403)):
+            raise
+        if on_stale:
+            on_stale(error, entry[0])
+        return entry[1]
     # מודפס בחלון של האפליקציה, כדי שיהיה קל לראות מה לוקח זמן
     print(f"[פלייליסטור] נטען {key} תוך {time.time() - started:.1f} שניות")
     _cache[(user_id, key)] = (time.time(), value)
