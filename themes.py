@@ -84,48 +84,55 @@ def theme_css(name):
     )
 
 
-# תנועה לכל סגנון. tempo: שניות לתנודה אחת (קצב), rise: שניות שבועה עולה מלמטה למעלה,
-# sway: כמה היא זזה הצידה, pulse: האם היא גם מתנפחת בקצב, colors: שניות למעבר צבעים ברקע
+# תנועה לכל סגנון, כמו נוזל על המסך. tempo: שניות בין טיפה לטיפה (קצב), drops: כמה מקומות שטיפות נולדות בהם,
+# blobs: כמה כתמי צבע זזים לאט, morph: שניות לתנועה של הכתמים, colors: שניות למעבר הצבעים ברקע
 MOTION = {
-    "pop": {"count": 16, "tempo": 1.6, "rise": 16, "sway": 26, "pulse": False, "colors": 18},
-    "mizrahi": {"count": 14, "tempo": 1.9, "rise": 20, "sway": 56, "pulse": False, "colors": 26},
-    "rock": {"count": 12, "tempo": 0.9, "rise": 10, "sway": 14, "pulse": True, "colors": 10},
-    "hiphop": {"count": 14, "tempo": 1.1, "rise": 13, "sway": 30, "pulse": True, "colors": 12},
-    "electronic": {"count": 26, "tempo": 0.6, "rise": 8, "sway": 8, "pulse": True, "colors": 8},
-    "chill": {"count": 10, "tempo": 3.6, "rise": 26, "sway": 44, "pulse": False, "colors": 30},
-    "default": {"count": 12, "tempo": 2.4, "rise": 16, "sway": 24, "pulse": False, "colors": 18},
+    "pop": {"tempo": 2.6, "drops": 6, "blobs": 3, "morph": 14, "colors": 18},
+    "mizrahi": {"tempo": 3.2, "drops": 5, "blobs": 3, "morph": 18, "colors": 26},
+    "rock": {"tempo": 1.2, "drops": 9, "blobs": 3, "morph": 6, "colors": 10},
+    "hiphop": {"tempo": 1.6, "drops": 7, "blobs": 3, "morph": 9, "colors": 12},
+    "electronic": {"tempo": 0.8, "drops": 12, "blobs": 4, "morph": 5, "colors": 8},
+    "chill": {"tempo": 5, "drops": 4, "blobs": 3, "morph": 24, "colors": 30},
+    "default": {"tempo": 2.6, "drops": 6, "blobs": 3, "morph": 14, "colors": 18},
 }
 
 
-def bubbles_html(theme):
-    """בועות בצבעי הסגנון. כל אחת מתחילה במקום אחר ונעה בקצב של הסגנון, כמו מוזיקה שעולה ויורדת."""
+def motion_html(theme):
+    """
+    תנועה נוזלית על המסך: טיפות שנולדות במקומות קבועים ומתפשטות כגלים, וכתמי צבע שזזים לאט.
+    הקצב והכמות נקבעים לפי הסגנון.
+    """
     motion = MOTION.get(theme, MOTION["default"])
     colors = THEMES.get(theme, THEMES["default"])["colors"]
     rnd = random.Random()
-    items = []
-    for _ in range(motion["count"]):
-        rise = motion["rise"] * rnd.uniform(0.7, 1.3)
+    blobs = []
+    for i in range(motion["blobs"]):
         style = (
-            f"--x:{rnd.randint(-2, 98)}%;--s:{rnd.randint(40, 140)}px;"
-            f"--rise:{rise:.1f}s;--d:-{rnd.uniform(0, rise):.1f}s;"
-            f"--sway:{motion['sway'] * rnd.uniform(0.5, 1.2):.0f}px;--sway-t:{rnd.uniform(2.5, 6):.1f}s;"
-            f"--bob:{rnd.randint(10, 28)}px;--tempo:{motion['tempo']}s;"
-            f"--c:{rnd.choice(colors)};--o:{rnd.uniform(0.25, 0.6):.2f};--b:{rnd.choice([0, 0, 2])}px"
+            f"--x:{rnd.randint(-10, 60)}%;--y:{rnd.randint(-10, 60)}%;--size:{rnd.randint(60, 90)}vmax;"
+            f"--c:{colors[i % len(colors)]};--morph:{motion['morph'] * rnd.uniform(0.8, 1.2):.1f}s;"
+            f"--drift:{rnd.randint(8, 20)}vmin"
         )
-        cls = "bubble pulse" if motion["pulse"] else "bubble"
-        items.append(f'<div class="{cls}" style="{style}"><i></i></div>')
-    return f'<div class="bg-bubbles">{"".join(items)}</div>'
+        blobs.append(f'<div class="blob" style="{style}"></div>')
+    drops = []
+    for _ in range(motion["drops"]):
+        period = motion["tempo"] * rnd.uniform(0.8, 1.4)
+        style = (
+            f"--x:{rnd.randint(4, 96)}%;--y:{rnd.randint(4, 96)}%;--size:{rnd.randint(16, 34)}px;"
+            f"--period:{period:.2f}s;--d:-{rnd.uniform(0, period):.2f}s;--c:{rnd.choice(colors)}"
+        )
+        drops.append(f'<div class="drop" style="{style}"></div>')
+    return f'<div class="bg-motion">{"".join(blobs)}{"".join(drops)}</div>'
 
 
 def background_html(images, theme="default"):
     """
-    רקע דינמי: בועות שעולות ויורדות בקצב הסגנון, ומעליהן שלוש שורות של תמונות שזזות לסירוגין.
-    בלי תמונות נשארות רק הבועות והצבעים.
+    רקע דינמי: טיפות שנולדות ומתפשטות על המים, וכתמי צבע זזים מאחוריהן, לפי קצב הסגנון.
+    מעליהם שלוש שורות של תמונות שזזות לסירוגין. בלי תמונות נשארות רק התנועה והצבעים.
     """
-    bubbles = bubbles_html(theme)
+    motion = motion_html(theme)
     style = f"--color-t:{MOTION.get(theme, MOTION['default'])['colors']}s"
     if not images:
-        return f'<div class="bg" aria-hidden="true" style="{style}">{bubbles}</div><div class="bg-shade light"></div>'
+        return f'<div class="bg" aria-hidden="true" style="{style}">{motion}</div><div class="bg-shade light"></div>'
     rows = []
     for i in range(3):
         # כל שורה מתחילה מתמונה אחרת, וכל שורה מוכפלת כדי שהתנועה תהיה רציפה
@@ -134,7 +141,8 @@ def background_html(images, theme="default"):
             shifted += shifted
         imgs = "".join(f'<img src="{escape(url)}" alt="" loading="lazy">' for url in shifted)
         rows.append(f'<div class="bg-row r{i + 1}"><div class="bg-track">{imgs}{imgs}</div></div>')
-    return f'<div class="bg" aria-hidden="true" style="{style}">{bubbles}{"".join(rows)}</div><div class="bg-shade"></div>'
+    # התנועה מעל התמונות, כדי שהטיפות יאירו את העטיפות
+    return f'<div class="bg" aria-hidden="true" style="{style}">{"".join(rows)}{motion}</div><div class="bg-shade"></div>'
 
 
 BACKGROUND_CSS = """
@@ -144,20 +152,18 @@ BACKGROUND_CSS = """
   background: linear-gradient(120deg, var(--c1), var(--c2), var(--c3), var(--c1));
   background-size: 300% 300%; animation: colors var(--color-t, 18s) ease infinite;
 }
-.bg-bubbles { position: absolute; inset: 0; overflow: hidden; }
-.bubble {
-  position: absolute; bottom: -180px; left: var(--x); width: var(--s); height: var(--s);
-  animation: rise var(--rise) linear infinite; animation-delay: var(--d); will-change: transform;
+.bg-motion { position: absolute; inset: 0; overflow: hidden; mix-blend-mode: screen; pointer-events: none; }
+.blob {
+  position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size);
+  border-radius: 50%; background: radial-gradient(closest-side, var(--c), transparent 72%);
+  opacity: .5; animation: drift var(--morph) ease-in-out infinite alternate; will-change: translate, scale;
 }
-.bubble i {
-  display: block; width: 100%; height: 100%; border-radius: 50%; opacity: var(--o);
-  background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, .85), var(--c) 42%, transparent 72%);
-  filter: blur(var(--b));
-  animation: sway var(--sway-t) ease-in-out infinite alternate, bob var(--tempo) ease-in-out infinite;
-}
-.bubble.pulse i {
-  animation: sway var(--sway-t) ease-in-out infinite alternate, bob var(--tempo) ease-in-out infinite,
-    pulse var(--tempo) ease-in-out infinite;
+.drop {
+  position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size);
+  margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2); border-radius: 50%;
+  background: radial-gradient(circle, var(--c) 25%, transparent 70%); opacity: 0;
+  animation: ripple var(--period) cubic-bezier(.2, .6, .3, 1) infinite; animation-delay: var(--d);
+  will-change: scale, opacity;
 }
 .bg-row { overflow: hidden; }
 .bg-track { display: flex; gap: 16px; width: max-content; animation: slide 70s linear infinite; }
@@ -174,12 +180,13 @@ BACKGROUND_CSS = """
 .bg-shade.light { background: radial-gradient(ellipse at center, rgba(0,0,0,.1), rgba(0,0,0,.55)); }
 @keyframes colors { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 @keyframes slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-@keyframes rise { from { transform: translateY(0); } to { transform: translateY(calc(-100vh - 280px)); } }
-@keyframes sway { from { transform: translateX(calc(var(--sway) * -1)); } to { transform: translateX(var(--sway)); } }
-@keyframes bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 calc(var(--bob) * -1); } }
-@keyframes pulse { 0%, 100% { scale: 1; } 50% { scale: 1.15; } }
+@keyframes drift {
+  from { translate: 0 0; scale: 1; }
+  to { translate: var(--drift) calc(var(--drift) * -.6); scale: 1.2; }
+}
+@keyframes ripple { 0% { scale: 0; opacity: 0; } 6% { scale: 1; opacity: .9; } 100% { scale: 8; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .bg, .bg-track, .bubble, .bubble i { animation: none; }
-  .bg-bubbles { display: none; }
+  .bg, .bg-track, .blob, .drop { animation: none; }
+  .bg-motion { display: none; }
 }
 """

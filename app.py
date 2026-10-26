@@ -1,12 +1,13 @@
 import os
 import secrets
+import time
 from html import escape
 from flask import Flask, redirect, request, session
 from dotenv import load_dotenv
 import requests
 import spotipy
 from spotipy.cache_handler import MemoryCacheHandler
-from spotipy.oauth2 import SpotifyOAuth, SpotifyOauthError
+from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth, SpotifyOauthError
 from lastfm import get_tags_for_artists, get_user_playcounts
 import library
 import themes
@@ -361,6 +362,43 @@ def auto_vibe():
         return {"theme": "default", "images": []}
 
 
+# זמרים ישראלים שאוהבים, לרקע מסך ההתחברות: תמונה של כל אחד ועטיפות של השירים שלו
+ISRAELI_SINGERS = [
+    "עומר אדם", "נועה קירל", "אייל גולן", "שרית חדד", "עדן בן זקן", "קרן פלס", "סטטיק ובן אל",
+    "שלומי שבת", "רביד פלוטניק", "עידן רייכל", "עדן חסון", "אביב גפן", "מוש בן ארי", "אריק איינשטיין",
+]
+LOGIN_SECONDS = 6 * 60 * 60
+LOGIN_RETRY_SECONDS = 15 * 60
+_login_cache = {"until": 0.0, "images": []}
+
+
+def login_images():
+    """
+    תמונות לרקע מסך ההתחברות. אין עדיין משתמש מחובר, אז משתמשים בפרטי האפליקציה.
+    התוצאה נשמרת לכמה שעות. אם ספוטיפיי לא עונה, המסך נטען בלי תמונות ונסה שוב בעוד רבע שעה.
+    """
+    now = time.time()
+    if now < _login_cache["until"]:
+        return _login_cache["images"]
+    try:
+        sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(), retries=0, requests_timeout=10, language="he")
+        faces, covers = [], []
+        for name in ISRAELI_SINGERS:
+            found = [a for a in sp.search(q=name, type="artist", limit=3)["artists"]["items"] if a]
+            if not found:
+                continue
+            artist = next((a for a in found if a["name"] == name), found[0])
+            faces.append(image_url(artist.get("images")))
+            tracks = sp.search(q=f'artist:"{name}"', type="track", limit=5)["tracks"]["items"]
+            own = [t for t in tracks if t and t["artists"] and t["artists"][0].get("id") == artist["id"]]
+            covers += [image_url(t["album"].get("images")) for t in own[:2]]
+        images, ttl = mix_images(faces, covers), LOGIN_SECONDS
+    except (spotipy.SpotifyException, SpotifyOauthError, requests.RequestException):
+        images, ttl = [], LOGIN_RETRY_SECONDS
+    _login_cache.update(until=now + ttl, images=images)
+    return images
+
+
 def page(body, title="פלייליסטור", wide=False, script="", theme=None, images=None):
     vibe = current_vibe()
     theme = theme or vibe["theme"]
@@ -683,7 +721,8 @@ def home():
             "<h1>פלייליסטים שמתאימים בדיוק לרגע</h1>"
             '<p class="note">בחרו ז\'אנר, מצב רוח ואירוע, ופלייליסטור יבנה לכם פלייליסט חדש בספוטיפיי.</p>'
             '<a class="btn" href="/login">התחברות עם ספוטיפיי</a>'
-            + (RELOGIN_NOTE if relogin else "")
+            + (RELOGIN_NOTE if relogin else ""),
+            images=login_images(),
         )
     sp = get_spotify_client()
     onboarding_card = (
