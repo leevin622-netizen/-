@@ -6,6 +6,7 @@
 אפשר לעצור באמצע ולהתחיל שוב: מונחים שכבר נשמרו טריים לא נבנים מחדש.
 """
 import os
+import re
 import sys
 import time
 
@@ -23,6 +24,8 @@ from vibes import get_features
 TRACKS_PER_TERM = 100
 PAUSE_SECONDS = 1
 RETRIES = 5
+# המתנה ארוכה מזו לא שווה לחכות לה בסקריפט. עוצרים, ואפשר להמשיך אחר כך
+MAX_WAIT_SECONDS = 600
 
 
 def all_terms():
@@ -37,14 +40,21 @@ def all_terms():
 
 
 def search_with_retry(sp, term):
-    """ספוטיפיי מגביל בקשות. מחכים ומנסים שוב, במקום לעצור את כל הבנייה."""
+    """ספוטיפיי מגביל בקשות. מחכים קצת ומנסים שוב. אם ההמתנה ארוכה, עוצרים מיד."""
     for attempt in range(1, RETRIES + 1):
         try:
             return engine.search_term(sp, term, "ביחד", TRACKS_PER_TERM)
         except SpotifyException as error:
             if error.http_status != 429:
                 raise
-            wait = 30 * attempt
+            # ספוטיפיי כותב בהודעה כמה שניות לחכות
+            match = re.search(r"after: (\d+)", str(error))
+            wait = int(match.group(1)) if match else 30 * attempt
+            if wait > MAX_WAIT_SECONDS:
+                raise RuntimeError(
+                    f"ספוטיפיי הגביל את הבקשות ל-{wait // 60} דקות. הבנייה נעצרה. "
+                    "הפעילו את אותה פקודה שוב אחרי ההמתנה, והיא תמשיך ממקום העצירה"
+                ) from error
             print(f"   ספוטיפיי ביקש להמתין, ממתינים {wait} שניות")
             time.sleep(wait)
     raise RuntimeError("ספוטיפיי ממשיך להגביל. נסו שוב מאוחר יותר, הבנייה תמשיך מאותו מקום")
@@ -69,7 +79,11 @@ def main():
             print(f"{label}: כבר באינדקס, מדלגים")
             continue
         started = time.time()
-        tracks = search_with_retry(sp, term)
+        try:
+            tracks = search_with_retry(sp, term)
+        except RuntimeError as error:
+            print(f"\n{error}")
+            break
         # מושכים גם את מאפייני הקצב, כדי שהסינון לפי אווירה יהיה מהיר
         get_features([t["id"] for t in tracks if t.get("id")])
         index_store.save_term(term, tracks)
