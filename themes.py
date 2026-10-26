@@ -52,6 +52,11 @@ def theme_for_tag(tag):
     return None
 
 
+def themes_for_tags(tags):
+    """כל הסגנונות שהתגיות של אמן מתאימות להם."""
+    return {theme_for_tag(t) for t in tags} - {None}
+
+
 def detect_theme(weighted_tags):
     """
     weighted_tags: רשימת (משקל, [תגיות]) לכל אמן. מחזיר את הסגנון עם הניקוד הכי גבוה.

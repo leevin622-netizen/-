@@ -287,20 +287,36 @@ def load_vibe(sp, uid):
     """הסגנון של המשתמש ותמונות לרקע, לפי האמנים והשירים שהוא הכי שומע."""
     artist_ranks, artist_objects = library.cached(uid, "top_artists", lambda: library.top_ranks(sp, "artists"))
     _, track_objects = library.cached(uid, "top_tracks", lambda: library.top_ranks(sp, "tracks"))
-    artists = sorted(artist_objects.values(), key=lambda a: min(artist_ranks[a["id"]].values()))[:20]
+    artists = sorted(artist_objects.values(), key=lambda a: min(artist_ranks[a["id"]].values()))[:40]
     # ז'אנרים מספוטיפיי, ואם אין, תגיות מ-Last.fm
     no_genres = [a for a in artists if not a.get("genres")]
     tags = dict(zip([a["id"] for a in no_genres], get_tags_for_artists([a["name"] for a in no_genres])))
-    weighted = [
-        (51 - min(artist_ranks[a["id"]].values()), a.get("genres") or tags.get(a["id"], []))
-        for a in artists
-    ]
-    covers = [image_url(t.get("album", {}).get("images")) for t in track_objects.values()]
-    faces = [image_url(a.get("images")) for a in artists]
-    # לסירוגין: אמן, עטיפה, אמן, עטיפה
+    artist_tags = {a["id"]: a.get("genres") or tags.get(a["id"], []) for a in artists}
+    weighted = [(51 - min(artist_ranks[a["id"]].values()), artist_tags[a["id"]]) for a in artists]
+    # תמונות לרקע לכל סגנון: רק אמנים שהתגיות שלהם מתאימות לו, והעטיפות של השירים שלהם
+    by_theme = {}
+    for name in themes.THEMES:
+        fitting = {a["id"] for a in artists if name in themes.themes_for_tags(artist_tags[a["id"]])}
+        faces = [image_url(a.get("images")) for a in artists if a["id"] in fitting]
+        covers = [
+            image_url(t.get("album", {}).get("images"))
+            for t in track_objects.values()
+            if any(artist.get("id") in fitting for artist in t.get("artists", []))
+        ]
+        by_theme[name] = mix_images(faces, covers)
+    all_faces = [image_url(a.get("images")) for a in artists]
+    all_covers = [image_url(t.get("album", {}).get("images")) for t in track_objects.values()]
+    return {
+        "theme": themes.detect_theme(weighted),
+        "images": mix_images(all_faces, all_covers),
+        "by_theme": by_theme,
+    }
+
+
+def mix_images(faces, covers):
+    """תמונות לסירוגין: אמן, עטיפה, אמן, עטיפה. בלי כפילויות, בגודל שהרקע צריך."""
     mixed = [url for pair in zip(faces, covers) for url in pair] + faces[len(covers):] + covers[len(faces):]
-    images = list(dict.fromkeys(u for u in mixed if u))[:BACKGROUND_IMAGES]
-    return {"theme": themes.detect_theme(weighted), "images": images}
+    return list(dict.fromkeys(u for u in mixed if u))[:BACKGROUND_IMAGES]
 
 
 def current_vibe():
@@ -308,7 +324,9 @@ def current_vibe():
     auto = auto_vibe()
     choice = session.get("vibe_choice")
     if choice in themes.THEMES and session.get("token_info"):
-        return {"theme": choice, "images": auto["images"]}
+        # התמונות מאחורה הן של האמנים מאותו סגנון. אם אין כאלה, מציגים את התמונות הכלליות
+        images = auto.get("by_theme", {}).get(choice) or auto["images"]
+        return {"theme": choice, "images": images}
     return auto
 
 
@@ -321,7 +339,8 @@ def auto_vibe():
         if sp is None:
             return {"theme": "default", "images": []}
         uid = user_id(sp)
-        return library.cached(uid, "vibe", lambda: load_vibe(sp, uid))
+        # המפתח כולל גרסה, כדי שמטמון ישן בלי תמונות לפי סגנון לא ייטען
+        return library.cached(uid, "vibe_v2", lambda: load_vibe(sp, uid))
     except Exception:
         return {"theme": "default", "images": []}
 
