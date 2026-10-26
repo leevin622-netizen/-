@@ -11,6 +11,7 @@ from spotipy.cache_handler import MemoryCacheHandler
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth, SpotifyOauthError
 from lastfm import get_tags_for_artists, get_user_playcounts
 import library
+import ratelimit
 import themes
 import favourites
 import json
@@ -19,7 +20,7 @@ from playlist_names import suggest_names
 from previews import preview_url
 from engine import (
     GENRE_HINTS, EVENT_HINTS, EVENT_GROUPS, LANGUAGES, HEBREW_GENRES, WORLD_GENRES,
-    find_tracks, find_liked_tracks, create_playlist, to_result, album_year,
+    find_tracks, find_liked_tracks, create_playlist, to_result, album_year, PLAYLIST_DESCRIPTION,
 )
 from vibes import describe, get_features
 
@@ -57,6 +58,29 @@ def check_csrf():
         )
 
 
+# כמה בקשות לכתובת אחת. הפעולות שעולות לספוטיפיי מוגבלות חזק, מה שנשאר מוגבל בעדינות
+RATE_LIMITS = {
+    ("POST", "/build"): ("build", 20, 60),
+    ("POST", "/build/more"): ("build", 20, 60),
+    ("POST", "/save"): ("save", 10, 60),
+    ("GET", "/preview"): ("preview", 60, 60),
+    ("GET", "/login"): ("login", 20, 600),
+    ("GET", "/callback"): ("login", 20, 600),
+}
+DEFAULT_LIMIT = ("all", 300, 60)
+
+
+@app.before_request
+def check_rate_limit():
+    ip = ratelimit.client_ip(request.remote_addr, request.headers.get("X-Forwarded-For"))
+    bucket, limit, window = RATE_LIMITS.get((request.method, request.path), DEFAULT_LIMIT)
+    if not ratelimit.allow(bucket, ip, limit, window):
+        return (
+            '<!doctype html><meta charset="utf-8"><p dir="rtl">יותר מדי בקשות מהמכשיר הזה. נסו שוב בעוד כמה דקות.</p>',
+            429,
+        )
+
+
 @app.after_request
 def security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -68,9 +92,10 @@ def security_headers(response):
     return response
 
 # user-follow-modify ו-user-library-modify מאפשרים לשמור אמנים ושירים בחשבון. שינוי ההרשאות דורש התחברות מחדש
+# playlist-read-private מאפשר לראות את הפלייליסטים הפרטיים שנוצרו כאן, כדי לערוך אותם
 SCOPE = (
     "user-library-read user-library-modify user-top-read user-follow-read user-follow-modify "
-    "playlist-modify-public playlist-modify-private"
+    "playlist-read-private playlist-read-collaborative playlist-modify-public playlist-modify-private"
 )
 RELOGIN_NOTE = (
     '<p class="note">כדי לאשר הרשאות חדשות, כמו שמירת אמנים ושירים בחשבון שלכם, צריך להתחבר שוב.</p>'
@@ -186,9 +211,7 @@ h2 { font-size: 19px; margin: 22px 0 10px; text-shadow: 0 2px 12px rgba(0, 0, 0,
 .bar-row .track { display: block; background: var(--border); border-radius: 999px; height: 12px; overflow: hidden; }
 .bar-row .fill { display: block; background: var(--accent); height: 100%; border-radius: 999px; }
 .bar-row .num { color: var(--muted); text-align: end; }
-.share { border-radius: 16px; padding: 20px; background: linear-gradient(135deg, var(--accent), #1b1b1b); color: #fff; }
-.share h2 { margin-top: 0; text-shadow: none; }
-.share p { margin: 6px 0; font-size: 16px; }
+.share-svg { display: block; width: 100%; height: auto; border-radius: 16px; margin-bottom: 12px; }
 textarea.copy {
   width: 100%; min-height: 120px; margin: 12px 0; padding: 10px; font-size: 14px;
   background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
@@ -302,6 +325,35 @@ COPY_JS = """
     function done() { copyButton.textContent = "✅ הועתק"; }
     if (navigator.clipboard) { navigator.clipboard.writeText(box.value).then(done); }
     else { document.execCommand("copy"); done(); }
+  });
+})();
+"""
+
+# כרטיס השיתוף הוא SVG. מציירים אותו על קנבס בגודל 1080 על 1080 ומורידים כ-PNG, שנוח לשלוח בוואטסאפ
+SAVE_CARD_JS = """
+(function () {
+  var button = document.getElementById("save-card"), svg = document.getElementById("card-svg");
+  if (!button || !svg) return;
+  button.addEventListener("click", function () {
+    var source = new XMLSerializer().serializeToString(svg);
+    var svgUrl = URL.createObjectURL(new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
+    var image = new Image();
+    image.onload = function () {
+      var canvas = document.createElement("canvas");
+      canvas.width = 1080;
+      canvas.height = 1080;
+      canvas.getContext("2d").drawImage(image, 0, 0, 1080, 1080);
+      URL.revokeObjectURL(svgUrl);
+      canvas.toBlob(function (png) {
+        var link = document.createElement("a");
+        link.href = URL.createObjectURL(png);
+        link.download = "playlistor-card.png";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }, "image/png");
+    };
+    image.src = svgUrl;
   });
 })();
 """
@@ -946,9 +998,16 @@ def home():
         '<a href="/saved-tracks">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם מיון לפי אמן, השמעות, תאריך ועוד</small></a>'
         '<a href="/my-artists">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a>'
         '<a href="/stats">📊 הסטטיסטיקות שלי<small>ז\'אנרים, עשורים, אמנים מובילים וכרטיס לשיתוף</small></a>'
+        '<a href="/my-playlists">🛠 הפלייליסטים שיצרתי<small>שינוי שם, הסרת שירים וסידור</small></a>'
         "</div>"
         '<p class="note">הנתונים נשמרים לכמה שעות כדי שהאפליקציה תהיה מהירה. '
         '<a href="/refresh">רענון נתונים מספוטיפיי</a></p>'
+        '<form method="post" action="/delete-data" class="card" '
+        'onsubmit="return confirm(\'למחוק מהשרת את הנתונים ששמורים עליכם? חשבון הספוטיפיי שלכם לא ישתנה.\')">'
+        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
+        '<p class="note">הנתונים שנשמרו בשרת: הספרייה ושירים שאהבתם, כדי שהאפליקציה תהיה מהירה. '
+        'מחיקה כאן לא משנה שום דבר בספוטיפיי.</p>'
+        '<button class="btn secondary" type="submit">מחיקת הנתונים שלי מהשרת</button></form>'
     )
 
 
@@ -972,6 +1031,18 @@ def refresh():
 def logout():
     if session.get("user_id"):
         library.clear_cache(session["user_id"])
+    session.clear()
+    return redirect("/")
+
+
+@app.route("/delete-data", methods=["POST"])
+def delete_data():
+    """מוחק מהשרת את הנתונים ששמורים על המשתמש, ואת התצוגות המקדימות שלו, ומתנתק. לא נוגע בספוטיפיי."""
+    uid = session.get("user_id")
+    if uid:
+        library.clear_cache(uid)
+        for token in [t for t, p in _previews.items() if p["uid"] == uid]:
+            del _previews[token]
     session.clear()
     return redirect("/")
 
@@ -1174,15 +1245,16 @@ def my_stats():
     top_genres = [(GENRE_NAMES.get(tag, tag), c) for tag, c in genre_counts.most_common(10)]
     decade_rows = [(f"שנות {decade}", c) for decade, c in sorted(decades.items())]
 
-    card_lines = [f"❤️ {len(saved)} שירים שאהבתי בפלייליסטור"]
+    # בלי אמוג'י בכרטיס, כי הם לא נראים נכון בתמונה שנוצרת בדפדפן
+    card_lines = [f"{len(saved)} שירים שאהבתי"]
     if top_artists:
-        card_lines.append(f"🎤 האמן שאני הכי אוהב: {top_artists[0][0]}")
+        card_lines.append(f"האמן שאני הכי אוהב: {top_artists[0][0]}")
     if top_genres:
-        card_lines.append(f"🎶 הז'אנר המוביל: {top_genres[0][0]}")
+        card_lines.append(f"הז'אנר המוביל: {top_genres[0][0]}")
     if decades:
         best_decade = max(decades.items(), key=lambda kv: kv[1])[0]
-        card_lines.append(f"📅 העשור האהוב: שנות {best_decade}")
-    card_text = "\n".join(["🎧 הטעם המוזיקלי שלי"] + card_lines)
+        card_lines.append(f"העשור האהוב: שנות {best_decade}")
+    card_text = "\n".join(["הטעם המוזיקלי שלי"] + card_lines + ["פלייליסטור"])
 
     genres_html = (
         bar_chart(top_genres) if top_genres
@@ -1198,15 +1270,241 @@ def my_stats():
         + (bar_chart(decade_rows) if decade_rows else '<p class="note">אין מידע על שנות היציאה.</p>')
         + "<h2>האמנים שאהבתם הכי הרבה</h2>"
         + bar_chart(top_artists)
-        + '<h2>כרטיס לשיתוף</h2>'
-        + '<div class="share"><h2>הטעם המוזיקלי שלי</h2>'
-        + "".join(f"<p>{escape(line)}</p>" for line in card_lines)
-        + "</div>"
+        + "<h2>כרטיס לשיתוף</h2>"
+        + share_card_svg("הטעם המוזיקלי שלי", card_lines)
+        + '<div class="toolbar">'
+        + '<button type="button" class="btn" id="save-card">⬇️ שמירה כתמונה (PNG)</button>'
+        + '<button type="button" class="btn secondary" id="copy-card">📋 העתקת טקסט</button></div>'
         + f'<textarea id="card-text" class="copy" readonly>{escape(card_text)}</textarea>'
-        + '<button type="button" class="btn secondary" id="copy-card">📋 העתק את הטקסט</button>'
         + '<p><a href="/">חזרה לדף הבית</a></p>',
-        title="הסטטיסטיקות שלי", wide=True, script=COPY_JS,
+        title="הסטטיסטיקות שלי", wide=True, script=COPY_JS + SAVE_CARD_JS,
     )
+
+
+def share_card_svg(title, lines):
+    """כרטיס לשיתוף כ-SVG בגודל 1080 על 1080. הדפדפן ממיר אותו ל-PNG כשמורידים (ראו SAVE_CARD_JS)."""
+    rows = "".join(
+        f'<text x="990" y="{390 + i * 120}" font-size="56" fill="#ffffff" text-anchor="end" '
+        f'font-family="Arial, sans-serif">{escape(line[:48])}</text>'
+        for i, line in enumerate(lines)
+    )
+    return (
+        '<svg id="card-svg" class="share-svg" xmlns="http://www.w3.org/2000/svg" '
+        'width="1080" height="1080" viewBox="0 0 1080 1080">'
+        '<defs><linearGradient id="card-bg" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0" stop-color="#1db954"/><stop offset="1" stop-color="#191414"/></linearGradient></defs>'
+        '<rect width="1080" height="1080" fill="url(#card-bg)"/>'
+        f'<text x="990" y="220" font-size="72" font-weight="bold" fill="#ffffff" text-anchor="end" '
+        f'font-family="Arial, sans-serif">{escape(title)}</text>'
+        + rows
+        + '<text x="90" y="1000" font-size="40" fill="#ffffff" fill-opacity="0.8" '
+        'font-family="Arial, sans-serif">פלייליסטור</text>'
+        "</svg>"
+    )
+
+
+def app_playlists(sp):
+    """הפלייליסטים של המשתמש שנוצרו בפלייליסטור. לפי הבעלות והתיאור שהאפליקציה כותבת."""
+    uid = user_id(sp)
+    found, offset = [], 0
+    while True:
+        block = sp.current_user_playlists(limit=50, offset=offset)
+        found += [
+            p for p in block["items"]
+            if p and p["owner"]["id"] == uid and PLAYLIST_DESCRIPTION in (p.get("description") or "")
+        ]
+        if not block.get("next"):
+            return found
+        offset += 50
+
+
+def owned_playlist(sp, playlist_id):
+    """הפלייליסט אם הוא של המשתמש ונוצר בפלייליסטור. אחרת None, כדי לא לערוך פלייליסטים של אחרים."""
+    if not favourites.is_spotify_id(playlist_id):
+        return None
+    playlist = sp.playlist(playlist_id, fields="id,name,description,owner.id,tracks.total")
+    if playlist["owner"]["id"] != user_id(sp) or PLAYLIST_DESCRIPTION not in (playlist.get("description") or ""):
+        return None
+    return playlist
+
+
+def playlist_tracks(sp, playlist_id, limit=MAX_TRACKS * 2):
+    """השירים לפי הסדר, עד limit. שיר שלא זמין הוא None, אבל המיקום נשמר."""
+    tracks, offset = [], 0
+    while offset < limit:
+        block = sp.playlist_items(playlist_id, limit=100, offset=offset, additional_types=("track",))
+        tracks += [item.get("track") for item in block["items"]]
+        if not block.get("next"):
+            break
+        offset += 100
+    return tracks[:limit]
+
+
+def editable_or_404(sp, playlist_id):
+    playlist = owned_playlist(sp, playlist_id)
+    if playlist is None:
+        return None, (page(
+            '<p>אפשר לערוך רק פלייליסטים שנוצרו בפלייליסטור. <a href="/my-playlists">לרשימה שלי</a>.</p>',
+        ), 404)
+    return playlist, None
+
+
+def parse_position(value, total):
+    """מספר מקום בפלייליסט, אם הוא בטווח. אחרת None."""
+    try:
+        position = int(value)
+    except (TypeError, ValueError):
+        return None
+    return position if 0 <= position < total else None
+
+
+@app.route("/my-playlists")
+def my_playlists():
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    playlists = app_playlists(sp)
+    if not playlists:
+        body = '<p class="note">עדיין לא שמרתם פלייליסטים דרך פלייליסטור.</p>'
+    else:
+        rows = "".join(
+            f"<li>{cover(image_url(p.get('images')))}"
+            f'<div class="info"><div class="title"><a class="sp" href="/playlist/{escape(p["id"])}">'
+            f'{escape(p["name"])}</a></div>'
+            f'<div class="sub">{p["tracks"]["total"]} שירים</div></div></li>'
+            for p in playlists
+        )
+        body = f'<ul class="list">{rows}</ul>'
+    return page(
+        "<h1>הפלייליסטים שיצרתי</h1>"
+        '<p class="note">שינוי שם, הסרת שירים וסידור, לפלייליסטים ששמרתם דרך פלייליסטור.</p>'
+        + body
+        + '<p><a href="/">חזרה לדף הבית</a></p>',
+        title="הפלייליסטים שיצרתי",
+    )
+
+
+def playlist_row(playlist_id, position, track, count, token):
+    """שורה בעריכה: שיר, ומה אפשר לעשות איתו (להזיז למעלה או למטה, או להסיר)."""
+    base = f"/playlist/{playlist_id}"
+
+    def button(action, label, extra="", disabled=False):
+        attr = " disabled" if disabled else ""
+        return (
+            f'<form method="post" action="{base}/{action}">'
+            f'<input type="hidden" name="csrf" value="{token}">'
+            f'<input type="hidden" name="position" value="{position}">{extra}'
+            f'<button class="btn secondary" type="submit"{attr}>{label}</button></form>'
+        )
+
+    if track is None:
+        info = '<div class="title">שיר לא זמין</div>'
+        cover_html = '<div class="noimg"></div>'
+        remove_extra = ""
+    else:
+        info = (
+            f'<div class="title">{spotify_link(track["name"], "track", track.get("id"))}</div>'
+            f'<div class="sub">{", ".join(escape(a["name"]) for a in track.get("artists", []))}</div>'
+        )
+        cover_html = cover(image_url((track.get("album") or {}).get("images")))
+        remove_extra = f'<input type="hidden" name="uri" value="{escape(track["uri"])}">'
+    return (
+        f"<li>{cover_html}<div class=\"info\">{info}</div>"
+        + button("move", "▲", '<input type="hidden" name="direction" value="up">', disabled=position == 0)
+        + button("move", "▼", '<input type="hidden" name="direction" value="down">', disabled=position == count - 1)
+        + button("remove", "✕", remove_extra)
+        + "</li>"
+    )
+
+
+@app.route("/playlist/<playlist_id>")
+def edit_playlist(playlist_id):
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    playlist, error = editable_or_404(sp, playlist_id)
+    if error:
+        return error
+    tracks = playlist_tracks(sp, playlist_id)
+    token = csrf_token()
+    rows = "".join(playlist_row(playlist_id, i, t, len(tracks), token) for i, t in enumerate(tracks))
+    return page(
+        f"<h1>{escape(playlist['name'])}</h1>"
+        f'<p class="note">{playlist["tracks"]["total"]} שירים. הזיזו שירים למעלה ולמטה, או הסירו אותם.</p>'
+        f'<form method="post" action="/playlist/{escape(playlist_id)}/rename" class="toolbar">'
+        f'<input type="hidden" name="csrf" value="{token}">'
+        f'<label class="field">שם חדש<input type="text" name="name" value="{escape(playlist["name"])}" maxlength="100"></label>'
+        '<button class="btn secondary" type="submit">שמירת השם</button></form>'
+        + (f'<ul class="list">{rows}</ul>' if rows else '<p class="note">הפלייליסט ריק.</p>')
+        + f'<form method="post" action="/playlist/{escape(playlist_id)}/unfollow" class="card" '
+        'onsubmit="return confirm(\'להסיר את הפלייליסט מהחשבון שלכם?\')">'
+        f'<input type="hidden" name="csrf" value="{token}">'
+        '<p class="note">ספוטיפיי לא מאפשר למחוק פלייליסט לגמרי דרך האפליקציה. הסרה תוציא אותו מהחשבון שלכם.</p>'
+        '<button class="btn secondary" type="submit">הסרה מהחשבון</button></form>'
+        + '<p><a href="/my-playlists">לרשימת הפלייליסטים</a></p>',
+        title=playlist["name"],
+    )
+
+
+@app.route("/playlist/<playlist_id>/rename", methods=["POST"])
+def rename_playlist(playlist_id):
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    playlist, error = editable_or_404(sp, playlist_id)
+    if error:
+        return error
+    name = request.form.get("name", "").strip()[:100]
+    if name:
+        sp.playlist_change_details(playlist_id, name=name)
+    return redirect(f"/playlist/{playlist_id}")
+
+
+@app.route("/playlist/<playlist_id>/remove", methods=["POST"])
+def remove_from_playlist(playlist_id):
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    playlist, error = editable_or_404(sp, playlist_id)
+    if error:
+        return error
+    position = parse_position(request.form.get("position"), playlist["tracks"]["total"])
+    uri = request.form.get("uri", "")
+    if position is not None and uri.startswith("spotify:track:"):
+        # ספוטיפיי מסיר רק אם השיר נמצא במקום הזה, כך שלא נמחק שיר אחר בטעות
+        sp.playlist_remove_specific_occurrences_of_items(playlist_id, [{"uri": uri, "positions": [position]}])
+    return redirect(f"/playlist/{playlist_id}")
+
+
+@app.route("/playlist/<playlist_id>/move", methods=["POST"])
+def move_in_playlist(playlist_id):
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    playlist, error = editable_or_404(sp, playlist_id)
+    if error:
+        return error
+    total = playlist["tracks"]["total"]
+    position = parse_position(request.form.get("position"), total)
+    direction = request.form.get("direction")
+    # ספוטיפיי מקבל את המקום שלפניו מכניסים, לפי הרשימה לפני ההזזה
+    if position is not None and direction == "up" and position > 0:
+        sp.playlist_reorder_items(playlist_id, position, position - 1)
+    elif position is not None and direction == "down" and position < total - 1:
+        sp.playlist_reorder_items(playlist_id, position, position + 2)
+    return redirect(f"/playlist/{playlist_id}")
+
+
+@app.route("/playlist/<playlist_id>/unfollow", methods=["POST"])
+def unfollow_playlist(playlist_id):
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    playlist, error = editable_or_404(sp, playlist_id)
+    if error:
+        return error
+    sp.current_user_unfollow_playlist(playlist_id)
+    return redirect("/my-playlists")
 
 
 def _percent(value):

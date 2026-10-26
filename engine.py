@@ -384,8 +384,12 @@ def find_liked_tracks(saved, artist_tags, genre, mood, event, language, count, r
     return separate_artists(results)
 
 
+# התיאור שהאפליקציה כותבת לפלייליסטים שהיא יוצרת. לפיו מזהים אותם ברשימה ובעריכה
+PLAYLIST_DESCRIPTION = "נוצר ב-פלייליסטור"
+
+
 def create_playlist(sp, name, uris):
-    playlist = sp.current_user_playlist_create(name=name, public=False, description="נוצר ב-פלייליסטור")
+    playlist = sp.current_user_playlist_create(name=name, public=False, description=PLAYLIST_DESCRIPTION)
     # ספוטיפיי מקבל עד 100 שירים בכל בקשת הוספה
     for start in range(0, len(uris), 100):
         sp.playlist_add_items(playlist["id"], uris[start:start + 100])
