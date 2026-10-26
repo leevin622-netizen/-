@@ -490,7 +490,10 @@ def home():
 
 @app.route("/login")
 def login():
-    return redirect(make_auth().get_authorize_url())
+    # מצב (state) אקראי שחוזר מספוטיפיי. בלעדיו אתר אחר יכול להתחבר בשם המשתמש לחשבון שלו
+    state = secrets.token_urlsafe(32)
+    session["oauth_state"] = state
+    return redirect(make_auth().get_authorize_url(state=state))
 
 
 @app.route("/refresh")
@@ -512,8 +515,9 @@ def logout():
 @app.route("/callback")
 def callback():
     code = request.args.get("code")
-    if not code:
-        return page("<p>ההתחברות בוטלה או נכשלה.</p>"), 400
+    expected_state = session.pop("oauth_state", None)
+    if not code or not expected_state or request.args.get("state") != expected_state:
+        return page("<p>ההתחברות בוטלה או נכשלה, או שהבקשה לא הגיעה מהאפליקציה. <a href=\"/login\">נסו שוב</a>.</p>"), 400
 
     try:
         token_info = make_auth().get_access_token(code, check_cache=False)
