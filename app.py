@@ -304,7 +304,16 @@ def load_vibe(sp, uid):
 
 
 def current_vibe():
-    """הסגנון של המשתמש המחובר. אם משהו נכשל, העיצוב הקלאסי, כדי שהעמוד תמיד ייטען."""
+    """העיצוב שבחרו. אם לא בחרו, הסגנון שמתאים למה שנשמע הכי הרבה."""
+    auto = auto_vibe()
+    choice = session.get("vibe_choice")
+    if choice in themes.THEMES and session.get("token_info"):
+        return {"theme": choice, "images": auto["images"]}
+    return auto
+
+
+def auto_vibe():
+    """הסגנון של המשתמש המחובר לפי מה שנשמע הכי הרבה. אם משהו נכשל, העיצוב הקלאסי, כדי שהעמוד תמיד ייטען."""
     if not session.get("token_info"):
         return {"theme": "default", "images": []}
     try:
@@ -462,6 +471,32 @@ def network_error(error):
     return page("<p>אין חיבור לספוטיפיי כרגע. בדקו את החיבור לאינטרנט ונסו שוב.</p>"), 503
 
 
+def vibe_picker():
+    """חלון הבחירה של העיצוב. ברירת המחדל אוטומטית, וכל סגנון זמין ידנית. השינוי משפיע על כל המסכים."""
+    chosen = session.get("vibe_choice", "")
+    options = '<option value="">אוטומטי (לפי מה שנשמע הכי הרבה)</option>' + "".join(
+        f'<option value="{key}"{" selected" if key == chosen else ""}>{t["emoji"]} {t["label"]}</option>'
+        for key, t in themes.THEMES.items()
+    )
+    return (
+        '<form method="post" action="/vibe" class="card">'
+        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
+        f'<label class="field">בחרו עיצוב<select name="vibe">{options}</select></label>'
+        '<button class="btn secondary" type="submit">החל</button></form>'
+    )
+
+
+@app.route("/vibe", methods=["POST"])
+def set_vibe():
+    """שומר את העיצוב שנבחר. ריק או לא מוכר חוזר לאוטומטי."""
+    choice = request.form.get("vibe", "")
+    if choice in themes.THEMES:
+        session["vibe_choice"] = choice
+    else:
+        session.pop("vibe_choice", None)
+    return redirect("/")
+
+
 @app.route("/")
 def home():
     if session.get("token_info") and session.get("scope") != SCOPE:
@@ -474,11 +509,13 @@ def home():
             '<a class="btn" href="/login">התחברות עם ספוטיפיי</a>'
         )
     vibe = themes.THEMES[current_vibe()["theme"]]
+    auto = themes.THEMES[auto_vibe()["theme"]]
     return page(
         "<h1>מה נשמע היום?</h1>"
         f'<div class="vibe">{vibe["emoji"]} החוויה שלך: {escape(vibe["label"])}'
-        '<span class="note">· לפי מה שאתה הכי שומע</span></div>'
-        '<div class="menu">'
+        f'<span class="note">· לפי מה שנשמע הכי הרבה: {escape(auto["label"])}</span></div>'
+        + vibe_picker()
+        + '<div class="menu">'
         '<a href="/build">✨ צור פלייליסט חדש<small>לפי ז\'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a>'
         '<a href="/saved-tracks">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם מיון לפי אמן, השמעות, תאריך ועוד</small></a>'
         '<a href="/my-artists">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a>'
