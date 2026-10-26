@@ -17,6 +17,8 @@ import favourites
 import json
 from urllib.parse import urlencode
 from playlist_names import suggest_names
+from previews import preview_url
+from concurrent.futures import ThreadPoolExecutor
 from engine import (
     GENRE_HINTS, EVENT_HINTS, EVENT_GROUPS, LANGUAGES, HEBREW_GENRES, WORLD_GENRES,
     find_tracks, find_liked_tracks, create_playlist, to_result, album_year, PLAYLIST_DESCRIPTION,
@@ -197,10 +199,12 @@ h2 { font-size: 19px; margin: 22px 0 10px; text-shadow: 0 2px 12px rgba(0, 0, 0,
   margin-bottom: 16px; font-size: 14px;
 }
 .moves { display: inline-flex; flex-direction: column; gap: 2px; flex: none; }
-.list .move {
+.list .move, .list .play {
   width: auto; padding: 2px 9px; font-size: 13px; line-height: 1.4; border-radius: 999px;
   background: var(--card-hover); color: var(--text); border: 1px solid var(--border); cursor: pointer;
 }
+.list .play { padding: 6px 10px; font-size: 14px; }
+.list .play.playing { background: var(--accent); color: var(--on-accent); }
 .bars { display: grid; gap: 8px; margin-bottom: 8px; }
 .bar-row { display: grid; grid-template-columns: minmax(90px, 150px) 1fr 44px; gap: 10px; align-items: center; font-size: 14px; }
 .bar-row .track { display: block; background: var(--border); border-radius: 999px; height: 12px; overflow: hidden; }
@@ -277,6 +281,31 @@ SORT_JS = """
 """
 
 # השמעה של קטע של 30 שניות. נטען מ-Deezer רק כשלוחצים, וקטע אחד מתנגן בכל פעם
+# השמעת 30 השניות הראשונות. הכתובת כבר בשורה של השיר, אז אין בקשה נוספת בלחיצה
+PLAY_JS = """
+(function () {
+  var list = document.getElementById("playlist");
+  if (!list) return;
+  var player = new Audio(), playingButton = null;
+  function stop() {
+    player.pause();
+    if (playingButton) playingButton.classList.remove("playing");
+    playingButton = null;
+  }
+  player.addEventListener("ended", stop);
+  list.addEventListener("click", function (event) {
+    var button = event.target.closest(".play");
+    if (!button) return;
+    if (playingButton === button) { stop(); return; }
+    stop();
+    player.src = button.dataset.src;
+    playingButton = button;
+    button.classList.add("playing");
+    player.play().catch(stop);
+  });
+})();
+"""
+
 # העתקת כרטיס השיתוף של הסטטיסטיקות
 COPY_JS = """
 (function () {
@@ -663,7 +692,20 @@ def format_rank(rank):
     return f"מקום {rank[0]} · {rank[1]}" if rank else ""
 
 
-def track_row(track, checkbox=False, feat=None):
+PREVIEW_WORKERS = 4
+
+
+def preview_links(tracks):
+    """כתובת הקטע של כל שיר שיש לו קטע, לפי uri. שיר בלי קטע לא מקבל כפתור ▶."""
+    def lookup(track):
+        first_artist = track["artists"][0][1] if track.get("artists") else track["artist"]
+        return track["uri"], preview_url(first_artist, track["name"])
+
+    with ThreadPoolExecutor(max_workers=PREVIEW_WORKERS) as pool:
+        return {uri: url for uri, url in pool.map(lookup, tracks) if url}
+
+
+def track_row(track, checkbox=False, feat=None, preview=""):
     check = (
         f'<input type="checkbox" name="uri" value="{escape(track["uri"])}" checked>' if checkbox else ""
     )
@@ -677,6 +719,10 @@ def track_row(track, checkbox=False, feat=None):
     if feat:
         attrs += f' data-bpm="{feat.get("tempo") or 0}" data-energy="{feat.get("energy") or 0}" data-valence="{feat.get("valence") or 0}"'
         info = describe(feat)
+    play = (
+        f'<button type="button" class="play" data-src="{escape(preview)}" '
+        'aria-label="השמעת 30 השניות הראשונות של השיר">▶</button>'
+    ) if preview else ""
     moves = (
         '<span class="moves">'
         '<button type="button" class="move" data-dir="-1" aria-label="העברה למעלה">▲</button>'
@@ -686,7 +732,7 @@ def track_row(track, checkbox=False, feat=None):
         f"<li{attrs}>{check}{spotify_link('', 'album', track.get('album_id'), cover(track.get('image', '')))}"
         f"<div class=\"info\"><div class=\"title\">{spotify_link(track['name'], 'track', track.get('id'))}</div>"
         f"<div class=\"sub\">{artist_links(track)}{(' · ' + escape(info)) if info else ''}</div></div>"
-        f"{moves}</li>"
+        f"{play}{moves}</li>"
     )
 
 
@@ -1650,13 +1696,18 @@ def preview_for(token):
 
 def render_preview(tracks, token, criteria, title, names):
     feats = get_features([t["id"] for t in tracks if t.get("id")])
-    rows = "".join(track_row(t, checkbox=True, feat=feats.get(t.get("id"))) for t in tracks)
+    links = preview_links(tracks)
+    rows = "".join(
+        track_row(t, checkbox=True, feat=feats.get(t.get("id")), preview=links.get(t["uri"], ""))
+        for t in tracks
+    )
     theme = themes.theme_for_choice(criteria["genre"], criteria["mood"], criteria["event"])
     covers = list(dict.fromkeys(t["image"] for t in tracks if t["image"]))[:BACKGROUND_IMAGES]
     return page(
         f"<h1>{len(tracks)} שירים בשבילך</h1>"
         '<p class="note">בטלו את הסימון בשירים שלא מתאימים, העבירו שירים למעלה ולמטה, ואז שמרו. '
-        "לשמיעה, לחצו על שם השיר ופתחו אותו בספוטיפיי.</p>"
+        "לחיצה על ▶ משמיעה את 30 השניות הראשונות, והכפתור מופיע רק בשירים שיש להם קטע. "
+        "לחיצה על שם השיר פותחת אותו בספוטיפיי.</p>"
         '<form method="post" action="/save">'
         f'<input type="hidden" name="csrf" value="{csrf_token()}">'
         f'<input type="hidden" name="theme" value="{escape(theme or "")}">'
@@ -1680,7 +1731,7 @@ def render_preview(tracks, token, criteria, title, names):
         "</div>"
         "</form>"
         '<p><a href="/build">התחלה מחדש</a></p>',
-        theme=theme, images=covers or None, script=NAME_JS + SORT_JS,
+        theme=theme, images=covers or None, script=NAME_JS + SORT_JS + PLAY_JS,
     )
 
 
