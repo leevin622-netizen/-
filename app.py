@@ -1337,7 +1337,7 @@ def owned_playlist(sp, playlist_id):
     """הפלייליסט אם הוא של המשתמש ונוצר בפלייליסטור. אחרת None, כדי לא לערוך פלייליסטים של אחרים."""
     if not favourites.is_spotify_id(playlist_id):
         return None
-    playlist = sp.playlist(playlist_id, fields="id,name,description,owner.id,tracks.total")
+    playlist = sp.playlist(playlist_id, fields="id,name,description,owner.id,items.total,tracks.total")
     if playlist["owner"]["id"] != user_id(sp) or PLAYLIST_DESCRIPTION not in (playlist.get("description") or ""):
         return None
     return playlist
