@@ -1,6 +1,9 @@
 import random
 import re
 
+import requests
+from spotipy.exceptions import SpotifyException
+
 import index_store
 from vibes import distance, get_features, profile_for, strength
 
@@ -178,7 +181,14 @@ def collect_for_query(sp, query, language, wanted):
 def collect_for_term(sp, term, language, wanted):
     """קודם מהאינדקס המקומי (ראה build_index.py), ואם אין בו שירים מתאימים, מחפש בספוטיפיי."""
     indexed = [t for t in index_store.load_term(term) if passes_language(t, language)]
-    return indexed or search_term(sp, term, language, wanted)
+    if indexed:
+        return indexed
+    try:
+        return search_term(sp, term, language, wanted)
+    except (SpotifyException, requests.RequestException) as error:
+        # ספוטיפיי מוגבל או לא זמין: מדלגים על המונח הזה, והשאר ממשיכים לעבוד
+        print(f"[פלייליסטור] מדלגים על {term}: {error}")
+        return []
 
 
 def search_term(sp, term, language, wanted):
