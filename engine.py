@@ -1,6 +1,7 @@
 import random
 import re
 
+import index_store
 from vibes import distance, get_features, profile_for, strength
 
 HEBREW_RE = re.compile(r"[֐-׿]")
@@ -175,6 +176,12 @@ def collect_for_query(sp, query, language, wanted):
 
 
 def collect_for_term(sp, term, language, wanted):
+    """קודם מהאינדקס המקומי (ראה build_index.py), ואם אין בו שירים מתאימים, מחפש בספוטיפיי."""
+    indexed = [t for t in index_store.load_term(term) if passes_language(t, language)]
+    return indexed or search_term(sp, term, language, wanted)
+
+
+def search_term(sp, term, language, wanted):
     """קודם מחפש לפי ז'אנר אמיתי בספוטיפיי, ואם אין כזה ז'אנר, לפי מילת חיפוש רגילה."""
     tracks = collect_for_query(sp, f'genre:"{term}"', language, wanted)
     if not tracks:
