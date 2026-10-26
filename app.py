@@ -372,6 +372,28 @@ LOGIN_RETRY_SECONDS = 15 * 60
 _login_cache = {"until": 0.0, "images": []}
 
 
+def _login_file():
+    return os.path.join(library.CACHE_DIR, "login_images.json")
+
+
+def _read_login_file():
+    """התמונות שנשמרו בפעם האחרונה שספוטיפיי ענה. כך המסך לא נשאר ריק כשספוטיפיי מגביל."""
+    try:
+        with open(_login_file(), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
+
+
+def _write_login_file(images):
+    try:
+        os.makedirs(library.CACHE_DIR, exist_ok=True)
+        with open(_login_file(), "w", encoding="utf-8") as f:
+            json.dump(images, f)
+    except OSError:
+        pass
+
+
 def login_images():
     """
     תמונות לרקע מסך ההתחברות. אין עדיין משתמש מחובר, אז משתמשים בפרטי האפליקציה.
@@ -393,8 +415,10 @@ def login_images():
             own = [t for t in tracks if t and t["artists"] and t["artists"][0].get("id") == artist["id"]]
             covers += [image_url(t["album"].get("images")) for t in own[:2]]
         images, ttl = mix_images(faces, covers), LOGIN_SECONDS
+        if images:
+            _write_login_file(images)
     except (spotipy.SpotifyException, SpotifyOauthError, requests.RequestException):
-        images, ttl = [], LOGIN_RETRY_SECONDS
+        images, ttl = _read_login_file(), LOGIN_RETRY_SECONDS
     _login_cache.update(until=now + ttl, images=images)
     return images
 
