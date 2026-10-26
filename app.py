@@ -197,8 +197,8 @@ def get_spotify_client():
         session["token_info"] = token_info
     # language="he": ספוטיפיי מחזיר שם בעברית לאמנים שיש להם כזה (בעיקר ישראלים),
     # ואמנים מחו"ל נשארים באנגלית. כך אין צורך בבקשה נפרדת לכל אמן.
-    # retries=1: אם ספוטיפיי מבקש להמתין, לא נתקעים דקות ארוכות אלא מראים הודעה.
-    return spotipy.Spotify(auth=token_info["access_token"], language="he", retries=1, requests_timeout=10)
+    # retries=0: כשספוטיפיי מבקש להמתין שעות, המשתמש מקבל הודעה מיד במקום לחכות
+    return spotipy.Spotify(auth=token_info["access_token"], language="he", retries=0, requests_timeout=10)
 
 
 # כמה תמונות של אמנים ועטיפות לשים ברקע
