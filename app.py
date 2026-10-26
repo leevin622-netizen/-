@@ -403,7 +403,11 @@ def login_images():
     if now < _login_cache["until"]:
         return _login_cache["images"]
     try:
-        sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(), retries=0, requests_timeout=10, language="he")
+        # אותם שמות משתנים כמו בהתחברות (SPOTIFY_CLIENT_ID), לא השמות ברירת המחדל של spotipy
+        credentials = SpotifyClientCredentials(
+            client_id=os.getenv("SPOTIFY_CLIENT_ID"), client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
+        )
+        sp = spotipy.Spotify(auth_manager=credentials, retries=0, requests_timeout=10, language="he")
         faces, covers = [], []
         for name in ISRAELI_SINGERS:
             found = [a for a in sp.search(q=name, type="artist", limit=3)["artists"]["items"] if a]
