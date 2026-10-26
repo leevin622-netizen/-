@@ -259,7 +259,11 @@ def find_tracks(sp, genre, mood, event, language, count, personal=False):
     seen = set()
     results = []
     if personal:
-        results = find_personal_tracks(sp, language, count // 2, seen)
+        try:
+            results = find_personal_tracks(sp, language, count // 2, seen)
+        except (SpotifyException, requests.RequestException) as error:
+            # האמנים המועדפים הם תוספת. אם ספוטיפיי לא זמין, ממשיכים בלעדיהם
+            print(f"[פלייליסטור] מדלגים על האמנים המועדפים: {error}")
 
     terms = build_terms(genre, mood, event, language)
     wanted = count - len(results)
