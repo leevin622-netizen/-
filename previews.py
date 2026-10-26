@@ -31,7 +31,9 @@ def preview_url(artist, title):
     try:
         data = requests.get(
             DEEZER_SEARCH,
-            params={"q": f'artist:"{artist}" track:"{title}"', "limit": 5},
+            # חיפוש רגיל: Deezer כבר לא מחזיר תוצאות לתחביר artist:"..." track:"...".
+            # ההתאמה המדויקת למטה היא שקובעת מה נבחר
+            params={"q": f"{artist} {title}", "limit": 10},
             timeout=TIMEOUT_SECONDS,
         ).json()
         for item in data.get("data", []):
