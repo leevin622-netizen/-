@@ -10,7 +10,9 @@ from spotipy.oauth2 import SpotifyOAuth, SpotifyOauthError
 from lastfm import get_tags_for_artists, get_user_playcounts
 import library
 import themes
+import favourites
 import json
+from urllib.parse import urlencode
 from playlist_names import suggest_names
 from engine import (
     GENRE_HINTS, EVENT_HINTS, EVENT_GROUPS, LANGUAGES, HEBREW_GENRES, WORLD_GENRES,
@@ -55,9 +57,13 @@ def security_headers(response):
     response.headers["Referrer-Policy"] = "same-origin"
     return response
 
+# user-follow-modify ו-user-library-modify מאפשרים לשמור אמנים ושירים בחשבון. שינוי ההרשאות דורש התחברות מחדש
 SCOPE = (
-    "user-library-read user-top-read user-follow-read "
+    "user-library-read user-library-modify user-top-read user-follow-read user-follow-modify "
     "playlist-modify-public playlist-modify-private"
+)
+RELOGIN_NOTE = (
+    '<p class="note">כדי לאשר הרשאות חדשות, כמו שמירת אמנים ושירים בחשבון שלכם, צריך להתחבר שוב.</p>'
 )
 MAX_TRACKS = 200
 # פלייליסט מסימון ידני בטבלת השירים שאהבת יכול להיות גדול יותר
@@ -143,6 +149,9 @@ td input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent)
 .btn.secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
 a.sp { color: inherit; text-decoration: none; }
 a.sp:hover { color: var(--accent); text-decoration: underline; }
+.list form { margin: 0; flex: none; }
+.list .btn { width: auto; padding: 8px 14px; font-size: 14px; white-space: nowrap; }
+h2 { font-size: 19px; margin: 22px 0 10px; text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
 """ + themes.BACKGROUND_CSS
 
 # מיון טבלה בלחיצה על כותרת, וסינון לפי טקסט חופשי
@@ -516,17 +525,159 @@ def set_vibe():
     return redirect("/")
 
 
+def wants_favourites(sp):
+    """האם להציג בדף הבית את כרטיס בחירת האמנים והשירים. אם ספוטיפיי לא עונה, לא מציגים אותו."""
+    try:
+        return favourites.needs_favourites(sp, user_id(sp))
+    except (spotipy.SpotifyException, requests.RequestException):
+        return False
+
+
+def favourites_url(q=""):
+    return "/favourites" + (f"?{urlencode({'q': q})}" if q else "")
+
+
+def pick_form(action, item_id, q, label):
+    """כפתור שמוסיף פריט לחשבון הספוטיפיי, ומחזיר לאותו חיפוש."""
+    return (
+        f'<form method="post" action="{action}">'
+        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
+        f'<input type="hidden" name="id" value="{escape(item_id)}">'
+        f'<input type="hidden" name="q" value="{escape(q)}">'
+        f'<button class="btn" type="submit">{label}</button></form>'
+    )
+
+
+def artist_rows(artists, followed, q):
+    if not artists:
+        return '<p class="note">אין תוצאות להצגה.</p>'
+    rows = []
+    for artist in artists:
+        if artist["id"] in followed:
+            action = '<span class="note">✓ עוקב</span>'
+        else:
+            action = pick_form("/favourites/artist", artist["id"], q, "➕ עקוב")
+        rows.append(
+            f"<li>{cover(artist['image'])}"
+            f'<div class="info"><div class="title">{spotify_link(artist["name"], "artist", artist["id"])}</div></div>'
+            f"{action}</li>"
+        )
+    return f'<ul class="list">{"".join(rows)}</ul>'
+
+
+def track_rows(tracks, saved, q):
+    if not tracks:
+        return '<p class="note">אין תוצאות להצגה.</p>'
+    rows = []
+    for track in tracks:
+        if saved.get(track["id"]):
+            action = '<span class="note">✓ שמור</span>'
+        else:
+            action = pick_form("/favourites/track", track["id"], q, "❤ שמור")
+        rows.append(
+            f"<li>{cover(track['image'])}"
+            f'<div class="info"><div class="title">{spotify_link(track["name"], "track", track["id"])}</div>'
+            f'<div class="sub">{artist_links(track)}</div></div>{action}</li>'
+        )
+    return f'<ul class="list">{"".join(rows)}</ul>'
+
+
+@app.route("/favourites")
+def favourites_page():
+    """מסך בחירת אמנים ושירים אהובים, עם חיפוש והמלצות. הבחירות נשמרות בחשבון הספוטיפיי."""
+    if session.get("scope") != SCOPE:
+        # ההרשאות השתנו, ואי אפשר לשמור בלי להתחבר שוב
+        session.pop("token_info", None)
+        session["relogin"] = True
+        return redirect("/login")
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+
+    uid = user_id(sp)
+    q = request.args.get("q", "").strip()[:100]
+    followed = {a["id"] for a in favourites.followed_artists(sp, uid)}
+    songs = favourites.saved_songs(sp, uid)
+    body = (
+        "<h1>אמנים ושירים שאתם אוהבים</h1>"
+        '<p class="note">סמנו מה שאתם אוהבים, והבחירות יישמרו בחשבון הספוטיפיי שלכם: '
+        "אמנים שתעקבו אחריהם, ושירים שתשמרו. לפיהם נמליץ לכם על שירים נוספים.</p>"
+        + stat_boxes([("אמנים שאני עוקב אחריהם", len(followed)), ("שירים שמורים", songs)])
+        + '<form method="get" action="/favourites" class="toolbar">'
+        f'<label class="field">חיפוש<input type="text" name="q" value="{escape(q)}" placeholder="שם אמן או שיר"></label>'
+        '<button class="btn secondary" type="submit">חיפוש</button></form>'
+    )
+    if q:
+        artists, tracks = favourites.search(sp, q)
+        saved = favourites.saved_flags(sp, [t["id"] for t in tracks])
+        body += (
+            "<h2>אמנים</h2>" + artist_rows(artists, followed, q)
+            + "<h2>שירים</h2>" + track_rows(tracks, saved, q)
+        )
+    else:
+        rec = favourites.recommendations(sp, uid)
+        artists = [a for a in rec["artists"] if a["id"] not in followed]
+        saved = favourites.saved_flags(sp, [t["id"] for t in rec["tracks"]])
+        tracks = [t for t in rec["tracks"] if not saved.get(t["id"])]
+        if rec["source"] == "well_known":
+            heading = "זמרים מוכרים כדי להתחיל"
+            note = "עדיין אין לכם אמנים או שירים אהובים, אז אלה זמרים מוכרים. סמנו מי שאתם אוהבים, ונמליץ על עוד לפי זה."
+        else:
+            heading = "המלצות בשבילכם"
+            note = "אמנים דומים למה שאתם כבר אוהבים, ושירים מהם."
+        body += (
+            f'<h2>{heading}</h2><p class="note">{note}</p>'
+            + artist_rows(artists, followed, "")
+            + "<h2>שירים שאולי תאהבו</h2>"
+            + track_rows(tracks, saved, "")
+        )
+    return page(body + '<p><a href="/">חזרה לדף הבית</a></p>', title="אמנים ושירים שאתם אוהבים")
+
+
+@app.route("/favourites/artist", methods=["POST"])
+def follow_artist():
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    artist_id = request.form.get("id", "")
+    if favourites.is_spotify_id(artist_id):
+        sp.user_follow_artists([artist_id])
+        library.forget(user_id(sp), "followed")
+    return redirect(favourites_url(request.form.get("q", "").strip()[:100]))
+
+
+@app.route("/favourites/track", methods=["POST"])
+def save_favourite_track():
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    track_id = request.form.get("id", "")
+    if favourites.is_spotify_id(track_id):
+        sp.current_user_saved_tracks_add([track_id])
+        library.forget(user_id(sp), "saved", "saved_total")
+    return redirect(favourites_url(request.form.get("q", "").strip()[:100]))
+
+
 @app.route("/")
 def home():
     if session.get("token_info") and session.get("scope") != SCOPE:
         # האפליקציה צריכה הרשאות חדשות (למשל רשימת האמנים שאתה עוקב אחריהם)
         session.pop("token_info", None)
+        session["relogin"] = True
     if not session.get("token_info"):
+        relogin = session.pop("relogin", False)
         return page(
             "<h1>פלייליסטים שמתאימים בדיוק לרגע</h1>"
             '<p class="note">בחרו ז\'אנר, מצב רוח ואירוע, ופלייליסטור יבנה לכם פלייליסט חדש בספוטיפיי.</p>'
             '<a class="btn" href="/login">התחברות עם ספוטיפיי</a>'
+            + (RELOGIN_NOTE if relogin else "")
         )
+    sp = get_spotify_client()
+    onboarding_card = (
+        '<a href="/favourites">🌟 בחרו אמנים ושירים שאתם אוהבים'
+        '<small>ככה נוכל להמליץ לכם על שירים שמתאימים לטעם שלכם</small></a>'
+        if sp is not None and wants_favourites(sp) else ""
+    )
     vibe = themes.THEMES[current_vibe()["theme"]]
     auto = themes.THEMES[auto_vibe()["theme"]]
     return page(
@@ -535,7 +686,8 @@ def home():
         f'<span class="note">· לפי מה שנשמע הכי הרבה: {escape(auto["label"])}</span></div>'
         + vibe_picker()
         + '<div class="menu">'
-        '<a href="/build">✨ צור פלייליסט חדש<small>לפי ז\'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a>'
+        + onboarding_card
+        + '<a href="/build">✨ צור פלייליסט חדש<small>לפי ז\'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a>'
         '<a href="/saved-tracks">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם מיון לפי אמן, השמעות, תאריך ועוד</small></a>'
         '<a href="/my-artists">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a>'
         "</div>"

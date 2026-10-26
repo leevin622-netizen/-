@@ -59,6 +59,14 @@ def clear_cache(user_id):
         pass
 
 
+def forget(user_id, *keys):
+    """מוחק מהמטמון רק את מה שהשתנה, למשל אחרי שעקבת אחרי אמן. שאר הנתונים נשארים."""
+    _load_from_disk(user_id)
+    for key in keys:
+        _cache.pop((user_id, key), None)
+    _save_to_disk(user_id)
+
+
 def all_saved_tracks(sp):
     """כל השירים שאהבת, לא רק 20 האחרונים."""
     items, offset = [], 0

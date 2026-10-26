@@ -43,6 +43,41 @@ def get_tags_for_artists(artist_names):
     with ThreadPoolExecutor(max_workers=20) as pool:
         return list(pool.map(get_artist_tags, artist_names))
 
+
+# אמנים דומים שכבר נמצאו, לפי שם האמן
+_similar_cache = {}
+
+
+def get_similar_artists(artist_name, limit=10):
+    """
+    אמנים דומים לאמן, לפי Last.fm: [{"name": ..., "match": 0..1}]. ריק אם לא נמצאו,
+    או אם אין מפתח Last.fm.
+    """
+    if artist_name in _similar_cache:
+        return _similar_cache[artist_name]
+    api_key = os.getenv("LASTFM_API_KEY")
+    if not api_key:
+        return []
+    params = {
+        "method": "artist.getsimilar",
+        "artist": artist_name,
+        "api_key": api_key,
+        "format": "json",
+        "autocorrect": 1,
+        "limit": limit,
+    }
+    try:
+        data = requests.get(LASTFM_URL, params=params, timeout=TIMEOUT_SECONDS).json()
+    except (requests.RequestException, ValueError):
+        return []
+    if "error" in data:
+        return []
+    items = data.get("similarartists", {}).get("artist", [])
+    _similar_cache[artist_name] = [
+        {"name": item["name"], "match": float(item.get("match") or 0)} for item in items if item.get("name")
+    ]
+    return _similar_cache[artist_name]
+
 def _user_top(method, key, user, api_key, max_pages=5):
     """מביא את רשימת ה-top של משתמש ב-Last.fm, עמוד אחרי עמוד (עד 1000 פריטים בעמוד)."""
     items = []
