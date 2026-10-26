@@ -232,13 +232,26 @@ def find_personal_tracks(sp, language, count, seen):
     return pick(pools, count, seen)
 
 
-def filter_by_vibe(pools, mood, event, wanted):
+def separate_artists(results):
+    """שירים של אותו אמן לא יופיעו ברצף, אם יש ברירה. בשביל זה נשאר הסדר בתוך כל אמן."""
+    remaining = list(results)
+    ordered = []
+    while remaining:
+        last = ordered[-1]["artists"][0][0] if ordered and ordered[-1]["artists"] else None
+        index = next(
+            (i for i, t in enumerate(remaining) if not t["artists"] or t["artists"][0][0] != last), 0
+        )
+        ordered.append(remaining.pop(index))
+    return ordered
+
+
+def filter_by_vibe(pools, mood, event, wanted, ranges=None):
     """
     משאיר רק שירים שמתאימים לאווירה (קצב, אנרגיה, שמחה) לפי ReccoBeats.
     שירים שלא עומדים בטווח נזרקים, והמובהקים ביותר נשארים בראש כל מאגר.
     אם השירות לא עונה בכלל, מחזירים את המאגרים כמו שהם.
     """
-    profile = profile_for(mood, event)
+    profile = profile_for(mood, event, ranges)
     if not profile:
         return pools
     ids = [t["id"] for pool in pools for t in pool if t.get("id")]
@@ -254,7 +267,7 @@ def filter_by_vibe(pools, mood, event, wanted):
     return filtered
 
 
-def find_tracks(sp, genre, mood, event, language, count, personal=False):
+def find_tracks(sp, genre, mood, event, language, count, personal=False, ranges=None):
     """מחזיר רשימת שירים (dict עם name, artist, uri) לפי הקריטריונים."""
     seen = set()
     results = []
@@ -270,10 +283,10 @@ def find_tracks(sp, genre, mood, event, language, count, personal=False):
     # כל מונח אוסף בערך פי שניים ממה שצריך, כדי שיהיה ממה לבחור
     per_term = max(PAGE_SIZE, -(-wanted * 2 // len(terms)))
     pools = [collect_for_term(sp, term, language, per_term) for term in terms]
-    pools = filter_by_vibe(pools, mood, event, wanted)
+    pools = filter_by_vibe(pools, mood, event, wanted, ranges)
     results += pick(pools, wanted, seen)
     random.shuffle(results)
-    return results
+    return separate_artists(results)
 
 
 def matches(term, tags):
@@ -282,12 +295,12 @@ def matches(term, tags):
     return all(word in words for word in term.lower().split())
 
 
-def filter_liked_by_vibe(scored, mood, event):
+def filter_liked_by_vibe(scored, mood, event, ranges=None):
     """
     אותו סינון אווירה כמו בחיפוש, רק לשירים שאהבת. שירים שלא מתאימים לקצב ולאנרגיה נזרקים,
     והמובהקים ביותר מקבלים ניקוד גבוה יותר. אם השירות לא עונה, לא משנים כלום.
     """
-    profile = profile_for(mood, event)
+    profile = profile_for(mood, event, ranges)
     if not profile or not scored:
         return scored
     features = get_features([track["id"] for _, track in scored if track.get("id")])
@@ -301,7 +314,7 @@ def filter_liked_by_vibe(scored, mood, event):
     return fitting
 
 
-def find_liked_tracks(saved, artist_tags, genre, mood, event, language, count):
+def find_liked_tracks(saved, artist_tags, genre, mood, event, language, count, ranges=None):
     """
     פלייליסט מתוך השירים שאהבת. artist_tags: {id של אמן: [ז'אנרים ותגיות]}.
     אם בחרת ז'אנר, נשארים רק שירים שהאמן שלהם מתאים לו. מצב רוח ואירוע מעדיפים שירים מתאימים.
@@ -317,11 +330,11 @@ def find_liked_tracks(saved, artist_tags, genre, mood, event, language, count):
             continue
         score = sum(matches(term, tags) for term in extra_terms) + random.random()
         scored.append((score, track))
-    scored = filter_liked_by_vibe(scored, mood, event)
+    scored = filter_liked_by_vibe(scored, mood, event, ranges)
     scored.sort(key=lambda pair: pair[0], reverse=True)
     results = [to_result(track) for _, track in scored[:count]]
     random.shuffle(results)
-    return results
+    return separate_artists(results)
 
 
 def create_playlist(sp, name, uris):

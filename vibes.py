@@ -66,7 +66,7 @@ _cache = None
 _lock = threading.Lock()
 
 
-def profile_for(mood, event):
+def profile_for(mood, event, ranges=None):
     """
     מחבר את הטווחים של מצב הרוח והאירוע. אם הם סותרים (למשל עצוב בחדר כושר),
     האירוע קובע את האנרגיה ומצב הרוח קובע את השמחה.
@@ -85,6 +85,8 @@ def profile_for(mood, event):
                 profile[name] = (low, high)
         else:
             profile[name] = (None if new_low == -1 else new_low, None if new_high == 999 else new_high)
+    # טווחים שהמשתמש קבע ידנית גוברים על ברירת המחדל
+    profile.update(ranges or {})
     return profile
 
 

@@ -16,12 +16,39 @@ from engine import (
     GENRE_HINTS, EVENT_HINTS, EVENT_GROUPS, LANGUAGES, HEBREW_GENRES, WORLD_GENRES,
     find_tracks, find_liked_tracks, create_playlist, to_result,
 )
+from vibes import describe, get_features
 
 load_dotenv()
 
 app = Flask(__name__)
 # בלי FLASK_SECRET ב-.env נוצר מפתח אקראי, וההתחברות תתאפס בכל הפעלה מחדש של השרת
 app.secret_key = os.getenv("FLASK_SECRET") or secrets.token_hex(32)
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+
+
+def csrf_token():
+    """אסימון שכל טופס חייב לשלוח, כדי שאתר אחר לא יוכל לשמור פלייליסטים בשמך."""
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_urlsafe(32)
+    return session["csrf"]
+
+
+@app.before_request
+def check_csrf():
+    if request.method == "POST" and request.form.get("csrf") != session.get("csrf"):
+        return (
+            '<!doctype html><meta charset="utf-8"><p dir="rtl">הטופס פג תוקף. רעננו את העמוד ונסו שוב.</p>',
+            400,
+        )
+
+
+@app.after_request
+def security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
 
 SCOPE = (
     "user-library-read user-top-read user-follow-read "
@@ -124,6 +151,45 @@ if (nameButton) {
     document.getElementById("title").value = names[current];
   });
 }
+"""
+
+# מיון התצוגה המקדימה לפי BPM, אנרגיה או שמחה, ועירבוב
+SORT_JS = """
+var list = document.querySelector("ul.list"), sortSelect = document.getElementById("sort");
+var shuffleButton = document.getElementById("shuffle");
+if (list && sortSelect) {
+  var originalOrder = Array.from(list.children);
+  sortSelect.addEventListener("change", function () {
+    var key = sortSelect.value;
+    var items = key ? Array.from(list.children).sort(function (a, b) {
+      return parseFloat(b.dataset[key]) - parseFloat(a.dataset[key]);
+    }) : originalOrder;
+    items.forEach(function (li) { list.appendChild(li); });
+  });
+}
+if (list && shuffleButton) {
+  shuffleButton.addEventListener("click", function () {
+    var items = Array.from(list.children);
+    for (var i = items.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1)), t = items[i];
+      items[i] = items[j]; items[j] = t;
+    }
+    items.forEach(function (li) { list.appendChild(li); });
+    if (sortSelect) sortSelect.value = "";
+  });
+}
+"""
+
+# תצוגת מספרים חיה לטווחים הידניים
+RANGE_JS = """
+document.querySelectorAll("output[id^='out-']").forEach(function (out) {
+  var label = out.closest("label");
+  var low = label.querySelector("input[name$='_min']"), high = label.querySelector("input[name$='_max']");
+  function show() { out.textContent = low.value + "% עד " + high.value + "%"; }
+  low.addEventListener("input", show);
+  high.addEventListener("input", show);
+  show();
+});
 """
 
 TABLE_JS = """
@@ -360,14 +426,19 @@ def format_rank(rank):
     return f"מקום {rank[0]} · {rank[1]}" if rank else ""
 
 
-def track_row(track, checkbox=False):
+def track_row(track, checkbox=False, feat=None):
     check = (
         f'<input type="checkbox" name="uri" value="{escape(track["uri"])}" checked>' if checkbox else ""
     )
+    # הנתונים מאפשרים מיון בדף, והתיאור מוצג ליד שם האמן
+    attrs, info = "", ""
+    if feat:
+        attrs = f' data-bpm="{feat.get("tempo") or 0}" data-energy="{feat.get("energy") or 0}" data-valence="{feat.get("valence") or 0}"'
+        info = describe(feat)
     return (
-        f"<li>{check}{spotify_link('', 'album', track.get('album_id'), cover(track.get('image', '')))}"
+        f"<li{attrs}>{check}{spotify_link('', 'album', track.get('album_id'), cover(track.get('image', '')))}"
         f"<div class=\"info\"><div class=\"title\">{spotify_link(track['name'], 'track', track.get('id'))}</div>"
-        f"<div class=\"sub\">{artist_links(track)}</div></div></li>"
+        f"<div class=\"sub\">{artist_links(track)}{(' · ' + escape(info)) if info else ''}</div></div></li>"
     )
 
 
@@ -583,6 +654,26 @@ def my_artists():
     )
 
 
+def _percent(value):
+    try:
+        return min(max(int(value), 0), 100)
+    except (TypeError, ValueError):
+        return None
+
+
+def read_ranges():
+    """טווחים ידניים מהטופס, באחוזים מ-0 עד 100. None אם לא סומן כוונון ידני."""
+    if "manual" not in request.form:
+        return None
+    ranges = {}
+    for key in ("energy", "danceability", "valence"):
+        low, high = _percent(request.form.get(f"{key}_min")), _percent(request.form.get(f"{key}_max"))
+        if low is None or high is None or low > high or (low == 0 and high == 100):
+            continue
+        ranges[key] = (low / 100 if low > 0 else None, high / 100 if high < 100 else None)
+    return ranges or None
+
+
 @app.route("/build", methods=["GET", "POST"])
 def build():
     sp = get_spotify_client()
@@ -593,6 +684,7 @@ def build():
         return page(
             "<h1>צור פלייליסט</h1>"
             '<form method="post" class="card">'
+            f'<input type="hidden" name="csrf" value="{csrf_token()}">'
             '<label class="field">מאיפה לקחת שירים<select name="source">'
             '<option value="search">מכל ספוטיפיי</option>'
             '<option value="liked">רק מהשירים שאהבתי</option></select></label>'
@@ -614,20 +706,35 @@ def build():
             f'<label class="field">כמות שירים (5 עד {MAX_TRACKS})'
             f'<input name="count" type="number" value="20" min="5" max="{MAX_TRACKS}"></label>'
             '<label class="check"><input type="checkbox" name="personal" checked> שלב שירים של האמנים המועדפים עליי</label>'
+            '<details class="card"><summary>כוונון ידני (אופציונלי)</summary>'
+            '<label class="check"><input type="checkbox" name="manual"> להשתמש בטווחים שאני קובע, במקום ברירת המחדל לפי מצב הרוח והאירוע</label>'
+            + "".join(
+                f'<label class="field">{label}: <output id="out-{key}">0% עד 100%</output>'
+                f'<input type="range" name="{key}_min" min="0" max="100" value="0">'
+                f'<input type="range" name="{key}_max" min="0" max="100" value="100"></label>'
+                for key, label in (("energy", "אנרגיה"), ("danceability", "ריקוד"), ("valence", "שמחה"))
+            )
+            + "</details>"
             '<button class="btn" type="submit">הצג שירים</button>'
-            "</form>"
+            "</form>",
+            script=RANGE_JS,
         )
 
-    genre = request.form.get("genre", "").strip() or request.form.get("genre_choice", "")
-    source = request.form.get("source", "search")
+    # קלט מהטופס: מגבילים אורך, ומקבלים רק ערכים מהתפריטים
+    genre = (request.form.get("genre", "").strip() or request.form.get("genre_choice", ""))[:60]
+    source = "liked" if request.form.get("source") == "liked" else "search"
     mood = request.form.get("mood", "")
+    mood = mood if mood in GENRE_HINTS else ""
     event = request.form.get("event", "")
+    event = event if event in EVENT_HINTS else ""
     language = request.form.get("language", "ביחד")
+    language = language if language in LANGUAGES else "ביחד"
     try:
         count = min(max(int(request.form.get("count", 20)), 5), MAX_TRACKS)
     except ValueError:
         count = 20
     personal = "personal" in request.form
+    ranges = read_ranges()
     # ז'אנר ישראלי מחפש שירים בעברית, אלא אם בחרת שפה אחרת במפורש
     if language == "ביחד" and (genre.startswith("israeli") or genre == "mizrahi"):
         language = "עברית"
@@ -636,9 +743,9 @@ def build():
         uid = user_id(sp)
         saved = library.cached(uid, "saved", lambda: library.all_saved_tracks(sp))
         tags = liked_artist_tags(sp, uid, saved)
-        tracks = find_liked_tracks(saved, tags, genre, mood, event, language, count)
+        tracks = find_liked_tracks(saved, tags, genre, mood, event, language, count, ranges)
     else:
-        tracks = find_tracks(sp, genre, mood, event, language, count, personal=personal)
+        tracks = find_tracks(sp, genre, mood, event, language, count, personal=personal, ranges=ranges)
     if not tracks:
         return page('<p>לא נמצאו שירים. <a href="/build">נסו שילוב אחר</a>.</p>')
 
@@ -646,23 +753,30 @@ def build():
     # שם שמתאים לאווירה, ועוד כמה הצעות לכפתור "שם אחר"
     names = suggest_names(genre, mood, event, GENRE_NAMES.get(genre, genre), from_liked=source == "liked")
     title = names[0]
-    rows = "".join(track_row(t, checkbox=True) for t in tracks)
+    feats = get_features([t["id"] for t in tracks if t.get("id")])
+    rows = "".join(track_row(t, checkbox=True, feat=feats.get(t.get("id"))) for t in tracks)
     theme = themes.theme_for_choice(genre, mood, event)
     covers = list(dict.fromkeys(t["image"] for t in tracks if t["image"]))[:BACKGROUND_IMAGES]
     return page(
         f"<h1>{len(tracks)} שירים בשבילך</h1>"
         '<p class="note">בטלו את הסימון בשירים שלא מתאימים, ואז שמרו.</p>'
         '<form method="post" action="/save">'
+        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
         f'<input type="hidden" name="theme" value="{escape(theme or "")}">'
         '<div class="toolbar">'
         f'<label class="field">שם הפלייליסט<input type="text" id="title" name="title" value="{escape(title)}" maxlength="100"></label>'
         f'<button type="button" class="btn secondary" id="other-name" data-names="{escape(json.dumps(names, ensure_ascii=False))}">🔄 שם אחר</button>'
         "</div>"
+        '<div class="toolbar">'
+        '<label class="field">מיון<select id="sort">'
+        '<option value="">הסדר המקורי</option><option value="bpm">קצב (BPM)</option>'
+        '<option value="energy">אנרגיה</option><option value="valence">שמחה</option></select></label>'
+        '<button type="button" class="btn secondary" id="shuffle">🔀 ערבב</button></div>'
         f'<ul class="list">{rows}</ul><br>'
         '<button class="btn" type="submit">שמור בספוטיפיי</button>'
         "</form>"
         '<p><a href="/build">התחלה מחדש</a></p>',
-        theme=theme, images=covers or None, script=NAME_JS,
+        theme=theme, images=covers or None, script=NAME_JS + SORT_JS,
     )
 
 
