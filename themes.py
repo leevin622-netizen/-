@@ -3,20 +3,20 @@ import random
 
 # ערכת עיצוב לכל סגנון: צבע מרכזי, צבע הטקסט עליו, ושלושה צבעים לרקע המשתנה
 THEMES = {
-    "pop": {"label": "פופ", "emoji": "💖", "accent": "#ff4fa3", "on_accent": "#000",
-            "colors": ("#ff4fa3", "#8b5cf6", "#ffb347")},
-    "mizrahi": {"label": "מזרחית", "emoji": "🌙", "accent": "#f5b301", "on_accent": "#000",
-                "colors": ("#f5b301", "#d9480f", "#0ca5a5")},
-    "rock": {"label": "רוק", "emoji": "🎸", "accent": "#ff3b30", "on_accent": "#000",
-             "colors": ("#7f0000", "#ff3b30", "#262626")},
-    "hiphop": {"label": "היפ הופ", "emoji": "🎤", "accent": "#ffb000", "on_accent": "#000",
-               "colors": ("#ff6a00", "#ffd200", "#3a3a3a")},
-    "electronic": {"label": "אלקטרוני", "emoji": "⚡", "accent": "#00e5ff", "on_accent": "#000",
-                   "colors": ("#00e5ff", "#7c3aed", "#ff00c8")},
-    "chill": {"label": "רגוע", "emoji": "🌊", "accent": "#5eead4", "on_accent": "#000",
-              "colors": ("#0f766e", "#1e3a8a", "#5eead4")},
-    "default": {"label": "קלאסי", "emoji": "🎧", "accent": "#1db954", "on_accent": "#000",
-                "colors": ("#1db954", "#0b3d2e", "#1e3a8a")},
+    "pop": {"label": "פופ", "emoji": "✨", "accent": "#a5b4fc", "on_accent": "#111",
+            "colors": ("#818cf8", "#38bdf8", "#fdba74")},
+    "mizrahi": {"label": "מזרחית", "emoji": "🌙", "accent": "#f4c56a", "on_accent": "#111",
+                "colors": ("#e0a84a", "#b45f3c", "#2f8f8a")},
+    "rock": {"label": "רוק", "emoji": "🎸", "accent": "#f19a8b", "on_accent": "#111",
+             "colors": ("#7a2e2a", "#c2564b", "#2a2a2e")},
+    "hiphop": {"label": "היפ הופ", "emoji": "🎤", "accent": "#f6c177", "on_accent": "#111",
+               "colors": ("#c97b3a", "#d9a441", "#34343a")},
+    "electronic": {"label": "אלקטרוני", "emoji": "⚡", "accent": "#7dd3fc", "on_accent": "#111",
+                   "colors": ("#38bdf8", "#6d5bd0", "#2b8a9e")},
+    "chill": {"label": "רגוע", "emoji": "🌊", "accent": "#8ee3cf", "on_accent": "#111",
+              "colors": ("#2c7a72", "#2f4a8a", "#6cc9b5")},
+    "default": {"label": "קלאסי", "emoji": "🎧", "accent": "#6ee7a0", "on_accent": "#111",
+                "colors": ("#2f9e64", "#164a3a", "#2c4a8a")},
 }
 
 # מילות מפתח בז'אנרים ובתגיות. הסדר חשוב: "israeli mizrahi" צריך להיספר כמזרחית ולא כפופ
@@ -176,7 +176,7 @@ BACKGROUND_CSS = """
 .blob {
   position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size);
   border-radius: 50%; background: radial-gradient(closest-side, var(--c), transparent 72%);
-  opacity: .5; animation: drift var(--morph) ease-in-out infinite alternate; will-change: translate, scale;
+  opacity: .38; animation: drift var(--morph) ease-in-out infinite alternate; will-change: translate, scale;
 }
 .drop {
   position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size);
@@ -191,20 +191,20 @@ BACKGROUND_CSS = """
 .bg-row.r3 .bg-track { animation-duration: 110s; }
 .bg-track img {
   height: 28vh; aspect-ratio: 1; object-fit: cover; border-radius: 18px;
-  opacity: .55; box-shadow: 0 8px 30px rgba(0,0,0,.4);
+  opacity: .42; box-shadow: 0 8px 30px rgba(0,0,0,.4);
 }
 .bg-shade {
   position: fixed; inset: 0; z-index: -1;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,.35), rgba(0,0,0,.8));
+  background: radial-gradient(ellipse at center, rgba(8,8,12,.55), rgba(8,8,12,.88));
 }
-.bg-shade.light { background: radial-gradient(ellipse at center, rgba(0,0,0,.1), rgba(0,0,0,.55)); }
+.bg-shade.light { background: radial-gradient(ellipse at center, rgba(8,8,12,.3), rgba(8,8,12,.7)); }
 @keyframes colors { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 @keyframes slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .beam {
   position: absolute; top: 50%; left: 50%; width: 150vmax; height: 150vmax; margin: -75vmax 0 0 -75vmax;
   background: conic-gradient(from 0deg, transparent 0deg 14deg, var(--c) 22deg, transparent 32deg 180deg,
     var(--c) 192deg, transparent 200deg 360deg);
-  opacity: .22; mix-blend-mode: screen; animation: spin var(--t) linear infinite;
+  opacity: .12; mix-blend-mode: screen; animation: spin var(--t) linear infinite;
 }
 .note-float {
   position: absolute; left: var(--x); bottom: -10vh; font-size: var(--size); line-height: 1; color: var(--c);
@@ -212,7 +212,7 @@ BACKGROUND_CSS = """
 }
 .eq {
   position: absolute; left: 0; right: 0; bottom: 0; height: 26vh; display: flex; align-items: flex-end;
-  gap: 4px; padding: 0 3vw; opacity: .75; mix-blend-mode: screen;
+  gap: 4px; padding: 0 3vw; opacity: .45; mix-blend-mode: screen;
 }
 .eq i {
   flex: 1; height: 100%; border-radius: 4px 4px 0 0; transform-origin: 50% 100%;

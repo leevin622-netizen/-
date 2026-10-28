@@ -15,7 +15,7 @@ import ratelimit
 import themes
 import favourites
 import json
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from playlist_names import suggest_names
 from previews import preview_url
 from concurrent.futures import ThreadPoolExecutor
@@ -106,117 +106,147 @@ MAX_SAVE = 2000
 
 STYLE = """
 :root {
-  --bg: #121212; --card: rgba(18, 18, 18, .72); --card-hover: rgba(50, 50, 50, .8); --text: #f2f2f2;
-  --muted: #c4c4c4; --border: rgba(255, 255, 255, .14);
+  --bg: #111216; --card: rgba(22, 23, 29, .84); --card-hover: rgba(44, 46, 56, .9); --text: #f4f4f6;
+  --muted: #c9cad3; --soft: #a3a5b1; --border: rgba(255, 255, 255, .12); --field: #1b1c22;
 }
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--bg); color: var(--text); min-height: 100vh;
-  font-family: "Segoe UI", Arial, sans-serif; line-height: 1.5;
+  font-family: "Segoe UI", "Heebo", "Rubik", Arial, sans-serif; font-size: 17px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
-.wrap { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+.wrap { max-width: 680px; margin: 0 auto; padding: 18px 16px 56px; }
+header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .brand { flex-wrap: wrap; }
-header a.logo { color: var(--text); text-decoration: none; font-size: 22px; font-weight: 700; white-space: nowrap; }
-header .user { color: var(--muted); font-size: 14px; }
+header a.logo { color: var(--text); text-decoration: none; font-size: 23px; font-weight: 700; white-space: nowrap; }
+header .user { color: var(--muted); font-size: 15px; }
 header .user a { color: var(--muted); margin-inline-start: 8px; display: inline-flex; align-items: center; min-height: 40px; }
-h1 { font-size: 24px; margin: 8px 0 16px; }
+h1 { font-size: 30px; line-height: 1.25; margin: 6px 0 18px; font-weight: 700; }
+h1, h2 { text-shadow: 0 2px 14px rgba(0, 0, 0, .55); }
+h2 { font-size: 21px; line-height: 1.3; margin: 30px 0 12px; font-weight: 700; }
 a { color: var(--accent); }
 .menu { display: grid; gap: 12px; }
 .menu a {
   display: block; background: var(--card); color: var(--text); text-decoration: none;
-  padding: 18px; border-radius: 12px; font-size: 17px;
+  padding: 18px 20px; border-radius: 16px; font-size: 18px; font-weight: 600;
+  border: 1px solid var(--border); transition: background .15s, border-color .15s;
 }
-.menu a:hover { background: var(--card-hover); }
-.menu a small { display: block; color: var(--muted); font-size: 14px; }
-.card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.menu a:hover { background: var(--card-hover); border-color: var(--accent); }
+.menu a small { display: block; color: var(--muted); font-size: 15px; font-weight: 400; margin-top: 2px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
 .menu a, .card, .list li, .stats div, .table-wrap, .vibe {
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }
 .vibe {
-  display: inline-flex; gap: 6px; align-items: center; margin-bottom: 16px; padding: 6px 14px;
-  border-radius: 16px; background: var(--card); border: 1px solid var(--accent); font-size: 14px;
+  display: flex; align-items: center; gap: 14px; margin-bottom: 20px; padding: 14px 18px;
+  border-radius: 16px; background: var(--card); border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--accent);
 }
-.vibe .note { flex-basis: 100%; }
-h1 { text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
-label.field { display: block; margin-bottom: 14px; color: var(--muted); font-size: 14px; }
+.vibe-emoji { font-size: 30px; line-height: 1; flex: none; }
+.vibe-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vibe-text b { font-size: 18px; }
+.vibe-text span { color: var(--muted); font-size: 15px; }
+label.field { display: block; margin-bottom: 18px; color: var(--text); font-size: 16px; font-weight: 600; }
+label.field .hint { display: block; color: var(--soft); font-size: 14px; font-weight: 400; }
+.req { color: var(--accent); margin-inline-start: 3px; }
 input[type=text], input[type=number], select {
-  display: block; width: 100%; margin-top: 4px; padding: 10px 12px; font-size: 16px;
-  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+  display: block; width: 100%; margin-top: 6px; padding: 11px 13px; font-size: 16px; font-family: inherit;
+  background: var(--field); color: var(--text); border: 1px solid var(--border); border-radius: 10px;
 }
-label.check { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+input[type=text]:focus, input[type=number]:focus, select:focus { border-color: var(--accent); }
+input::placeholder { color: var(--soft); }
+fieldset.group { border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px 2px; margin: 0 0 18px; }
+fieldset.group legend { padding: 0 6px; font-weight: 700; font-size: 16px; }
+fieldset.group.invalid { border-color: #f19a8b; }
+.form-error {
+  background: rgba(241, 154, 139, .14); border: 1px solid #f19a8b; color: #ffd9d2;
+  border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; font-size: 15px;
+}
+label.check { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; font-size: 16px; }
+label.check input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+details.card summary { cursor: pointer; font-weight: 600; }
 .btn {
   display: inline-block; width: 100%; padding: 14px; border: 0; border-radius: 999px;
-  background: var(--accent); color: var(--on-accent); font-size: 17px; font-weight: 700;
-  text-align: center; text-decoration: none; cursor: pointer;
+  background: var(--accent); color: var(--on-accent); font-size: 17px; font-weight: 700; font-family: inherit;
+  text-align: center; text-decoration: none; cursor: pointer; transition: filter .15s;
 }
-.btn:hover { background: var(--accent-dark); }
+.btn:hover { filter: brightness(1.08); }
 .list { list-style: none; padding: 0; margin: 0; }
 .list li {
-  display: flex; align-items: center; gap: 12px; padding: 8px;
-  border-radius: 8px; background: var(--card); margin-bottom: 6px;
+  display: flex; align-items: center; gap: 12px; padding: 10px;
+  border-radius: 12px; background: var(--card); margin-bottom: 6px;
 }
-.list img, .list .noimg { width: 48px; height: 48px; border-radius: 4px; flex: none; background: var(--border); }
+.list img, .list .noimg { width: 50px; height: 50px; border-radius: 6px; flex: none; background: var(--border); }
 .list .info { min-width: 0; flex: 1; }
-.list .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.list .sub { color: var(--muted); font-size: 14px; }
+.list .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.list .sub { color: var(--muted); font-size: 15px; }
 .list input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
-.note { color: #ececec; font-size: 14px; text-shadow: 0 1px 6px rgba(0, 0, 0, .45); }
-.success { background: #133d24; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-.wide { max-width: 1100px; }
-.stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-.stats div { background: var(--card); border-radius: 12px; padding: 12px 16px; flex: 1; min-width: 130px; }
-.stats b { display: block; font-size: 22px; }
-.stats span { color: var(--muted); font-size: 13px; }
+.note { color: var(--muted); font-size: 15px; text-shadow: 0 1px 6px rgba(0, 0, 0, .45); }
+.success {
+  background: rgba(46, 125, 84, .35); border: 1px solid rgba(110, 231, 160, .4);
+  border-radius: 16px; padding: 20px; margin-bottom: 16px;
+}
+.wide { max-width: 1180px; }
+.stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.stats div { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px 18px; flex: 1; min-width: 130px; }
+.stats b { display: block; font-size: 26px; line-height: 1.2; }
+.stats span { color: var(--muted); font-size: 14px; }
 input.search { margin-bottom: 12px; }
-.table-wrap { overflow-x: auto; border-radius: 12px; background: var(--card); }
+.table-wrap { overflow-x: auto; border-radius: 16px; background: var(--card); border: 1px solid var(--border); }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { padding: 8px 10px; text-align: start; border-bottom: 1px solid var(--border); white-space: nowrap; }
-th { color: var(--muted); font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0; background: #181818; }
+th, td { padding: 7px 8px; text-align: start; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; cursor: pointer; user-select: none; position: sticky; top: 0; background: #1b1c22; }
 th:hover { color: var(--text); }
 th.asc::after { content: " ▲"; } th.desc::after { content: " ▼"; }
-td img, td .noimg { width: 36px; height: 36px; border-radius: 4px; display: block; background: var(--border); }
-td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+td img, td .noimg { width: 34px; height: 34px; border-radius: 4px; display: block; background: var(--border); }
+td.name { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+td.short { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 td.muted { color: var(--muted); }
 tr:hover td { background: var(--card-hover); }
 td input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
 .toolbar label.field { flex: 1; min-width: 200px; margin: 0; }
-.toolbar .btn { width: auto; padding: 10px 18px; font-size: 15px; }
+.toolbar .btn { width: auto; padding: 11px 20px; font-size: 15px; }
 .btn.secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+.btn.secondary:hover { border-color: var(--accent); }
 a.sp { color: inherit; text-decoration: none; }
 a.sp:hover { color: var(--accent); text-decoration: underline; }
 .list form { margin: 0; flex: none; }
 .list .btn { width: auto; padding: 8px 14px; font-size: 14px; white-space: nowrap; }
-h2 { font-size: 19px; margin: 22px 0 10px; text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .vibe-switch { margin: 0; }
 .vibe-switch select {
-  display: block; width: auto; max-width: 130px; margin: 0; padding: 5px 8px; font-size: 13px;
-  border-radius: 999px; border-color: var(--accent);
+  display: block; width: auto; max-width: 140px; margin: 0; padding: 6px 10px; font-size: 14px;
+  border-radius: 999px;
 }
 .vibe-switch .btn { width: auto; padding: 5px 10px; font-size: 13px; }
 .warn {
-  background: #3d2e0b; color: #ffe9b0; border-radius: 12px; padding: 12px 16px;
-  margin-bottom: 16px; font-size: 14px;
+  background: rgba(244, 197, 106, .14); border: 1px solid rgba(244, 197, 106, .45); color: #ffeac2;
+  border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; font-size: 15px;
 }
 .moves { display: inline-flex; flex-direction: column; gap: 2px; flex: none; }
-.list .move, .list .play {
+.list .move, .play {
   width: auto; min-width: 40px; min-height: 32px; padding: 2px 10px; font-size: 15px; line-height: 1.4; border-radius: 999px;
-  background: var(--card-hover); color: var(--text); border: 1px solid var(--border); cursor: pointer;
+  background: var(--card-hover); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-family: inherit;
 }
-.list .play { min-width: 44px; min-height: 44px; padding: 6px 10px; font-size: 16px; }
-.list .play.playing { background: var(--accent); color: var(--on-accent); }
-.bars { display: grid; gap: 8px; margin-bottom: 8px; }
-.bar-row { display: grid; grid-template-columns: minmax(90px, 150px) 1fr 44px; gap: 10px; align-items: center; font-size: 14px; }
+.play { min-width: 44px; min-height: 44px; padding: 6px 10px; font-size: 16px; flex: none; }
+td .play { min-width: 34px; min-height: 34px; padding: 2px 8px; font-size: 13px; }
+.play.playing { background: var(--accent); color: var(--on-accent); }
+.play.loading { opacity: .6; cursor: progress; }
+.play.none { opacity: .35; cursor: default; }
+.bars { display: grid; gap: 9px; margin-bottom: 8px; }
+.bar-row { display: grid; grid-template-columns: minmax(90px, 160px) 1fr 48px; gap: 12px; align-items: center; font-size: 15px; }
 .bar-row .track { display: block; background: var(--border); border-radius: 999px; height: 12px; overflow: hidden; }
-.bar-row .fill { display: block; background: var(--accent); height: 100%; border-radius: 999px; }
+.bar-row .fill { display: block; background: var(--accent); height: 100%; border-radius: 999px; opacity: .85; }
 .bar-row .num { color: var(--muted); text-align: end; }
-.share-svg { display: block; width: 100%; height: auto; border-radius: 16px; margin-bottom: 12px; }
+.share { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 760px) { .share { grid-template-columns: 1fr; } }
+.share-svg { display: block; width: 100%; max-width: 380px; height: auto; border-radius: 20px; box-shadow: 0 12px 40px rgba(0, 0, 0, .5); }
+.share .toolbar .btn { flex: 1; min-width: 140px; }
 textarea.copy {
-  width: 100%; min-height: 120px; margin: 12px 0; padding: 10px; font-size: 14px;
-  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+  width: 100%; min-height: 200px; margin: 0 0 12px; padding: 12px 14px; font-size: 15px; line-height: 1.7; font-family: inherit;
+  background: var(--field); color: var(--text); border: 1px solid var(--border); border-radius: 12px; resize: vertical;
 }
 """ + themes.BACKGROUND_CSS
 
@@ -315,6 +345,52 @@ PLAY_JS = """
 })();
 """
 
+# כפתור ▶ בטבלת השירים שאהבת. הכתובת נטענת מהשרת רק בלחיצה, כי יש מאות שירים בטבלה
+LAZY_PLAY_JS = """
+(function () {
+  var player = new Audio(), playingButton = null;
+  function stop() {
+    player.pause();
+    if (playingButton) {
+      playingButton.classList.remove("playing");
+      playingButton.setAttribute("aria-pressed", "false");
+      playingButton.textContent = "▶";
+    }
+    playingButton = null;
+  }
+  function start(button, url) {
+    stop();
+    player.src = url;
+    playingButton = button;
+    button.classList.add("playing");
+    button.setAttribute("aria-pressed", "true");
+    button.textContent = "⏸";
+    player.play().catch(stop);
+  }
+  player.addEventListener("ended", stop);
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("td .play");
+    if (!button || button.classList.contains("none") || button.classList.contains("loading")) return;
+    if (playingButton === button) { stop(); return; }
+    if (button.dataset.src) { start(button, button.dataset.src); return; }
+    button.classList.add("loading");
+    var query = new URLSearchParams({ artist: button.dataset.artist, title: button.dataset.title });
+    fetch("/preview?" + query).then(function (r) { return r.json(); }).then(function (data) {
+      button.classList.remove("loading");
+      if (!data.url) {
+        button.classList.add("none");
+        button.textContent = "–";
+        button.title = "לא נמצא קטע לשיר הזה";
+        button.setAttribute("aria-label", "לא נמצא קטע לשיר הזה");
+        return;
+      }
+      button.dataset.src = data.url;
+      start(button, data.url);
+    }).catch(function () { button.classList.remove("loading"); });
+  });
+})();
+"""
+
 # העתקת כרטיס השיתוף של הסטטיסטיקות
 COPY_JS = """
 (function () {
@@ -329,32 +405,48 @@ COPY_JS = """
 })();
 """
 
-# כרטיס השיתוף הוא SVG. מציירים אותו על קנבס בגודל 1080 על 1080 ומורידים כ-PNG, שנוח לשלוח בוואטסאפ
+# כרטיס השיתוף הוא SVG. מציירים אותו על קנבס בגודל המלא שלו ומורידים כ-PNG, או משתפים (בטלפון: סטורי, וואטסאפ)
 SAVE_CARD_JS = """
 (function () {
-  var button = document.getElementById("save-card"), svg = document.getElementById("card-svg");
-  if (!button || !svg) return;
-  button.addEventListener("click", function () {
+  var saveButton = document.getElementById("save-card"), shareButton = document.getElementById("share-card");
+  var svg = document.getElementById("card-svg"), box = document.getElementById("card-text");
+  if (!saveButton || !svg) return;
+  var width = Number(svg.getAttribute("width")), height = Number(svg.getAttribute("height"));
+  function makePng(done) {
     var source = new XMLSerializer().serializeToString(svg);
     var svgUrl = URL.createObjectURL(new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
     var image = new Image();
     image.onload = function () {
       var canvas = document.createElement("canvas");
-      canvas.width = 1080;
-      canvas.height = 1080;
-      canvas.getContext("2d").drawImage(image, 0, 0, 1080, 1080);
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(image, 0, 0, width, height);
       URL.revokeObjectURL(svgUrl);
-      canvas.toBlob(function (png) {
-        var link = document.createElement("a");
-        link.href = URL.createObjectURL(png);
-        link.download = "playlistor-card.png";
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      }, "image/png");
+      canvas.toBlob(done, "image/png");
     };
     image.src = svgUrl;
+  }
+  saveButton.addEventListener("click", function () {
+    makePng(function (png) {
+      var link = document.createElement("a");
+      link.href = URL.createObjectURL(png);
+      link.download = "playlistor-card.png";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    });
   });
+  // שיתוף עם התמונה, רק בדפדפנים שתומכים בשיתוף קבצים (בעיקר בטלפון)
+  var probe = new File([""], "card.png", { type: "image/png" });
+  if (shareButton && navigator.canShare && navigator.canShare({ files: [probe] })) {
+    shareButton.hidden = false;
+    shareButton.addEventListener("click", function () {
+      makePng(function (png) {
+        var file = new File([png], "playlistor-card.png", { type: "image/png" });
+        navigator.share({ files: [file], text: box ? box.value : "" }).catch(function () {});
+      });
+    });
+  }
 })();
 """
 
@@ -368,6 +460,27 @@ document.querySelectorAll("output[id^='out-']").forEach(function (out) {
   high.addEventListener("input", show);
   show();
 });
+"""
+
+# בדיקה לפני שליחה: לפחות ז'אנר, מצב רוח או אירוע. השרת בודק שוב (ראו build)
+BUILD_CHECK_JS = """
+(function () {
+  var form = document.getElementById("build-form"), box = document.getElementById("build-error");
+  var group = document.getElementById("must-pick");
+  if (!form) return;
+  form.addEventListener("submit", function (event) {
+    var picked = ["genre_choice", "genre", "mood", "event"].some(function (name) {
+      return form.elements[name].value.trim() !== "";
+    });
+    if (picked) return;
+    event.preventDefault();
+    box.textContent = __MESSAGE__;
+    box.hidden = false;
+    group.classList.add("invalid");
+    group.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+  group.addEventListener("change", function () { group.classList.remove("invalid"); box.hidden = true; });
+})();
 """
 
 TABLE_JS = """
@@ -705,10 +818,10 @@ def format_duration(ms):
 
 
 def format_rank(rank):
-    return f"מקום {rank[0]} · {rank[1]}" if rank else ""
+    return f"#{rank[0]} · {rank[1]}" if rank else ""
 
 
-PREVIEW_WORKERS = 4
+PREVIEW_WORKERS = 8
 
 
 def preview_links(tracks):
@@ -1009,12 +1122,13 @@ def home():
     auto = themes.THEMES[auto_vibe()["theme"]]
     return page(
         "<h1>מה נשמע היום?</h1>"
-        f'<div class="vibe">{vibe["emoji"]} החוויה שלך: {escape(vibe["label"])}'
-        f'<span class="note">לפי מה שנשמע הכי הרבה: {escape(auto["label"])}</span></div>'
+        f'<div class="vibe"><span class="vibe-emoji" aria-hidden="true">{vibe["emoji"]}</span>'
+        f'<span class="vibe-text"><b>החוויה שלך: {escape(vibe["label"])}</b>'
+        f'<span>לפי מה שאתם שומעים הכי הרבה: {auto["emoji"]} {escape(auto["label"])}</span></span></div>'
         + '<div class="menu">'
         + onboarding_card
         + '<a href="/build">✨ צור פלייליסט חדש<small>לפי ז\'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a>'
-        '<a href="/saved-tracks">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם מיון לפי אמן, השמעות, תאריך ועוד</small></a>'
+        '<a href="/saved-tracks">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם השמעת קטעים ומיון לפי אמן, תאריך ועוד</small></a>'
         '<a href="/my-artists">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a>'
         '<a href="/stats">📊 הסטטיסטיקות שלי<small>ז\'אנרים, עשורים, אמנים מובילים וכרטיס לשיתוף</small></a>'
         '<a href="/my-playlists">🛠 הפלייליסטים שיצרתי<small>שינוי שם, הסרת שירים וסידור</small></a>'
@@ -1095,7 +1209,6 @@ def saved_tracks():
     uid = user_id(sp)
     saved = library.cached(uid, "saved", lambda: library.all_saved_tracks(sp))
     track_ranks, _ = library.cached(uid, "top_tracks", lambda: library.top_ranks(sp, "tracks"))
-    plays, _ = library.cached(uid, "lastfm", get_user_playcounts)
 
     tracks = []
     for item in saved:
@@ -1107,41 +1220,37 @@ def saved_tracks():
             duration=track.get("duration_ms") or 0,
             popularity=track.get("popularity"),
             rank=library.best_rank(track_ranks.get(track["id"])),
-            plays=plays.get((track["artists"][0]["name"].lower(), track["name"].lower())) if plays else None,
         )
         tracks.append(result)
 
-    columns = [("", None), ("", None), ("שיר", "text"), ("אמן", "text"), ("אלבום", "text"),
-               ("נוסף בתאריך", "text"), ("אורך", "num"), ("פופולריות", "num"),
-               ("הדירוג שלך", "num")]
-    if plays is not None:
-        columns.append(("השמעות (Last.fm)", "num"))
+    columns = [("", None), ("", None), ("", None), ("שיר", "text"), ("אמן", "text"), ("אלבום", "text"),
+               ("נוסף", "text"), ("אורך", "num"), ("פופולריות", "num"), ("דירוג", "num")]
     rows = []
     for t in tracks:
+        first_artist = t["artists"][0][1] if t["artists"] else t["artist"]
+        added = t["added"]
         row = (
-            f'<td><input type="checkbox" name="uri" value="{escape(t["uri"])}"></td>'
+            f'<td><input type="checkbox" name="uri" value="{escape(t["uri"])}" aria-label="לסמן את {escape(t["name"])}"></td>'
+            f'<td><button type="button" class="play" data-artist="{escape(first_artist)}" data-title="{escape(t["name"])}" '
+            f'aria-pressed="false" aria-label="השמעת קטע מ{escape(t["name"])}">▶</button></td>'
             f"<td>{spotify_link('', 'album', t['album_id'], cover(t['image']))}</td>"
             + cell(t["name"], cls="name", html=spotify_link(t["name"], "track", t["id"]))
-            + cell(t["artist"], cls="name", html=artist_links(t))
-            + cell(t["album"], cls="name muted", html=spotify_link(t["album"], "album", t["album_id"]))
-            + cell(t["added"], cls="muted")
+            + cell(t["artist"], cls="short", html=artist_links(t))
+            + cell(t["album"], cls="short muted", html=spotify_link(t["album"], "album", t["album_id"]))
+            # התאריך מוצג קצר (31.12.24), והמיון לפי התאריך המלא
+            + cell(f"{added[8:10]}.{added[5:7]}.{added[2:4]}" if len(added) == 10 else added, added, "muted")
             + cell(format_duration(t["duration"]), t["duration"], "muted")
             + cell("" if t["popularity"] is None else t["popularity"], "" if t["popularity"] is None else t["popularity"])
             # בדירוג, מקום 1 הוא הכי טוב, ולכן ממיינים לפי מספר שלילי
-            + cell(format_rank(t["rank"]), -t["rank"][0] if t["rank"] else "")
+            + cell(format_rank(t["rank"]), -t["rank"][0] if t["rank"] else "", "muted")
         )
-        if plays is not None:
-            row += cell("" if t["plays"] is None else t["plays"], "" if t["plays"] is None else t["plays"])
         rows.append(f"<tr>{row}</tr>")
 
     artists_count = len({a for t in tracks for a, _ in t["artists"]})
     total_hours = sum(t["duration"] for t in tracks) / 3_600_000
     note = (
-        ""
-        if plays is not None
-        else '<p class="note">ספוטיפיי לא חושף כמה פעמים שמעת כל שיר. "הדירוג שלך" הוא המקום של השיר '
-        "ב-50 השירים שאתה הכי שומע (ב-4 השבועות האחרונים, ב-6 החודשים האחרונים, או בכל הזמנים). "
-        "למספר השמעות אמיתי, חבר את ספוטיפיי ל-Last.fm והוסף LASTFM_USER לקובץ .env.</p>"
+        '<p class="note">לחיצה על ▶ משמיעה קטע של 30 שניות. "דירוג" הוא המקום של השיר '
+        "ב-50 השירים שאתם הכי שומעים (ב-4 השבועות האחרונים, ב-6 החודשים האחרונים, או בכל הזמנים).</p>"
     )
     return page(
         "<h1>כל השירים שאהבתי</h1>"
@@ -1160,8 +1269,17 @@ def saved_tracks():
         + f'<div class="table-wrap"><table id="tracks" class="sortable"><thead>{header(columns)}</thead>'
         + f'<tbody>{"".join(rows)}</tbody></table></div>'
         + "</form>",
-        title="כל השירים שאהבתי", wide=True, script=TABLE_JS,
+        title="כל השירים שאהבתי", wide=True, script=TABLE_JS + LAZY_PLAY_JS,
     )
+
+
+@app.route("/preview")
+def preview_lookup():
+    """כתובת קטע של 30 שניות לשיר, לכפתור ▶ בטבלת השירים שאהבת. נטען רק כשלוחצים."""
+    if not session.get("token_info"):
+        return {"url": ""}, 401
+    url = preview_url(request.args.get("artist", ""), request.args.get("title", ""))
+    return {"url": url}
 
 
 @app.route("/my-artists")
@@ -1262,18 +1380,26 @@ def my_stats():
 
     top_artists = [(names[i], c) for i, c in artist_counts.most_common(10)]
     top_genres = [(GENRE_NAMES.get(tag, tag), c) for tag, c in genre_counts.most_common(10)]
-    decade_rows = [(f"שנות {decade}", c) for decade, c in sorted(decades.items())]
+    decade_rows = [(decade_label(decade), c) for decade, c in sorted(decades.items())]
 
-    # בלי אמוג'י בכרטיס, כי הם לא נראים נכון בתמונה שנוצרת בדפדפן
-    card_lines = [f"{len(saved)} שירים שאהבתי"]
+    # הכרטיס בלי אמוג'י (ראו share_card_svg), והטקסט לשיתוף עם אמוג'י
+    tiles, lines = [], ["🎧 הטעם המוזיקלי שלי", f"❤️ {len(saved):,} שירים שאהבתי"]
     if top_artists:
-        card_lines.append(f"האמן שאני הכי אוהב: {top_artists[0][0]}")
+        tiles.append(("האמן שהכי אהבתי", top_artists[0][0]))
+        lines.append(f"🎤 האמן שהכי אהבתי: {top_artists[0][0]}")
     if top_genres:
-        card_lines.append(f"הז'אנר המוביל: {top_genres[0][0]}")
+        tiles.append(("הז'אנר המוביל", top_genres[0][0]))
+        lines.append(f"🎶 הז'אנר המוביל: {top_genres[0][0]}")
     if decades:
-        best_decade = max(decades.items(), key=lambda kv: kv[1])[0]
-        card_lines.append(f"העשור האהוב: שנות {best_decade}")
-    card_text = "\n".join(["הטעם המוזיקלי שלי"] + card_lines + ["פלייליסטור"])
+        best_decade = decade_label(max(decades.items(), key=lambda kv: kv[1])[0])
+        tiles.append(("העשור האהוב", best_decade))
+        lines.append(f"📅 העשור האהוב: {best_decade}")
+    if len(top_artists) >= 3:
+        medals = ("🥇", "🥈", "🥉")
+        lines.append("🏆 הטופ 3 שלי: " + "  ".join(f"{m} {name}" for m, (name, _) in zip(medals, top_artists)))
+    lines.append(f"✨ ומה הטעם שלכם? גלו בפלייליסטור 👉 {public_site()}")
+    card_text = "\n".join(lines)
+    theme = current_vibe()["theme"]
 
     genres_html = (
         bar_chart(top_genres) if top_genres
@@ -1289,36 +1415,89 @@ def my_stats():
         + (bar_chart(decade_rows) if decade_rows else '<p class="note">אין מידע על שנות היציאה.</p>')
         + "<h2>האמנים שאהבתם הכי הרבה</h2>"
         + bar_chart(top_artists)
-        + "<h2>כרטיס לשיתוף</h2>"
-        + share_card_svg("הטעם המוזיקלי שלי", card_lines)
+        + "<h2>📸 כרטיס לשיתוף</h2>"
+        + '<div class="share">'
+        + share_card_svg(len(saved), tiles, theme)
+        + '<div><p class="note" style="margin-top:0">מוכן לסטורי או לפוסט. שתפו את התמונה, '
+        'או העתיקו את הטקסט לוואטסאפ.</p>'
         + '<div class="toolbar">'
-        + '<button type="button" class="btn" id="save-card">⬇️ שמירה כתמונה (PNG)</button>'
-        + '<button type="button" class="btn secondary" id="copy-card">📋 העתקת טקסט</button></div>'
-        + f'<textarea id="card-text" class="copy" readonly>{escape(card_text)}</textarea>'
+        + '<button type="button" class="btn" id="share-card" hidden>📲 שיתוף</button>'
+        + '<button type="button" class="btn secondary" id="save-card">⬇️ שמירה כתמונה</button></div>'
+        + f'<textarea id="card-text" class="copy" readonly aria-label="טקסט לשיתוף">{escape(card_text)}</textarea>'
+        + '<div class="toolbar"><button type="button" class="btn secondary" id="copy-card">📋 העתקת טקסט</button></div>'
+        + "</div></div>"
         + '<p><a href="/">חזרה לדף הבית</a></p>',
         title="הסטטיסטיקות שלי", wide=True, script=COPY_JS + SAVE_CARD_JS,
     )
 
 
-def share_card_svg(title, lines):
-    """כרטיס לשיתוף כ-SVG בגודל 1080 על 1080. הדפדפן ממיר אותו ל-PNG כשמורידים (ראו SAVE_CARD_JS)."""
-    rows = "".join(
-        f'<text x="990" y="{390 + i * 120}" font-size="56" fill="#ffffff" text-anchor="end" '
-        f'font-family="Arial, sans-serif">{escape(line[:48])}</text>'
-        for i, line in enumerate(lines)
+CARD_WIDTH, CARD_HEIGHT = 1080, 1350
+
+
+def public_site():
+    """כתובת האתר לשיתוף, למשל https://example.ngrok-free.dev, לפי כתובת החזרה של ספוטיפיי."""
+    parts = urlsplit(os.getenv("SPOTIFY_REDIRECT_URI") or request.host_url)
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def share_card_svg(total, tiles, theme):
+    """
+    כרטיס לשיתוף בגודל 1080 על 1350, היחס של פוסט באינסטגרם. הדפדפן ממיר אותו ל-PNG (ראו SAVE_CARD_JS).
+    tiles: עד שלוש שורות (כותרת, ערך). הכול ממורכז, כדי שהעברית לא תתהפך בתמונה שנוצרת מחוץ לעמוד.
+    בלי אמוג'י, כי הם לא נראים נכון בתמונה שנוצרת בדפדפן.
+    """
+    t = themes.THEMES.get(theme, themes.THEMES["default"])
+    c1, c2, c3 = t["colors"]
+    accent = t["accent"]
+    mid = CARD_WIDTH // 2
+
+    def text(y, size, content, fill="#ffffff", weight="400", opacity="1"):
+        return (
+            f'<text x="{mid}" y="{y}" font-size="{size}" font-weight="{weight}" fill="{fill}" '
+            f'fill-opacity="{opacity}" text-anchor="middle">{escape(content)}</text>'
+        )
+
+    tile_html = ""
+    for i, (label, value) in enumerate(tiles[:3]):
+        y = 600 + i * 170
+        tile_html += (
+            f'<rect x="90" y="{y}" width="900" height="146" rx="36" fill="#ffffff" fill-opacity="0.07" '
+            'stroke="#ffffff" stroke-opacity="0.14" stroke-width="2"/>'
+            + text(y + 52, 32, label, "#ffffff", "400", "0.7")
+            + text(y + 112, 54, value[:26], "#ffffff", "700")
+        )
+    # עמודי אקולייזר קטנים בתחתית, כקישוט
+    bars = "".join(
+        f'<rect x="{150 + i * 32}" y="{1196 - h}" width="18" height="{h}" rx="9" fill="url(#card-accent)" fill-opacity="0.8"/>'
+        for i, h in enumerate([28, 52, 76, 44, 92, 60, 36, 84, 56, 98, 40, 70, 30, 88, 62, 46, 80, 34, 66, 50, 90, 38, 58])
     )
     return (
-        '<svg id="card-svg" class="share-svg" xmlns="http://www.w3.org/2000/svg" '
-        'width="1080" height="1080" viewBox="0 0 1080 1080">'
-        '<defs><linearGradient id="card-bg" x1="0" y1="0" x2="1" y2="1">'
-        '<stop offset="0" stop-color="#1db954"/><stop offset="1" stop-color="#191414"/></linearGradient></defs>'
-        '<rect width="1080" height="1080" fill="url(#card-bg)"/>'
-        f'<text x="990" y="220" font-size="72" font-weight="bold" fill="#ffffff" text-anchor="end" '
-        f'font-family="Arial, sans-serif">{escape(title)}</text>'
-        + rows
-        + '<text x="90" y="1000" font-size="40" fill="#ffffff" fill-opacity="0.8" '
-        'font-family="Arial, sans-serif">פלייליסטור</text>'
-        "</svg>"
+        f'<svg id="card-svg" class="share-svg" xmlns="http://www.w3.org/2000/svg" role="img" '
+        f'aria-label="כרטיס הטעם המוזיקלי שלי" width="{CARD_WIDTH}" height="{CARD_HEIGHT}" '
+        f'viewBox="0 0 {CARD_WIDTH} {CARD_HEIGHT}" direction="rtl" font-family="Segoe UI, Arial, sans-serif">'
+        "<defs>"
+        f'<radialGradient id="glow1" cx="0.15" cy="0.1" r="0.75"><stop offset="0" stop-color="{c1}" stop-opacity="0.75"/>'
+        f'<stop offset="1" stop-color="{c1}" stop-opacity="0"/></radialGradient>'
+        f'<radialGradient id="glow2" cx="0.95" cy="0.75" r="0.7"><stop offset="0" stop-color="{c2}" stop-opacity="0.65"/>'
+        f'<stop offset="1" stop-color="{c2}" stop-opacity="0"/></radialGradient>'
+        f'<radialGradient id="glow3" cx="0.2" cy="1" r="0.55"><stop offset="0" stop-color="{c3}" stop-opacity="0.45"/>'
+        f'<stop offset="1" stop-color="{c3}" stop-opacity="0"/></radialGradient>'
+        f'<linearGradient id="card-accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{c1}"/>'
+        f'<stop offset="1" stop-color="{accent}"/></linearGradient>'
+        "</defs>"
+        f'<rect width="{CARD_WIDTH}" height="{CARD_HEIGHT}" fill="#0f1016"/>'
+        f'<rect width="{CARD_WIDTH}" height="{CARD_HEIGHT}" fill="url(#glow1)"/>'
+        f'<rect width="{CARD_WIDTH}" height="{CARD_HEIGHT}" fill="url(#glow2)"/>'
+        f'<rect width="{CARD_WIDTH}" height="{CARD_HEIGHT}" fill="url(#glow3)"/>'
+        f'<rect x="{mid - 150}" y="80" width="300" height="64" rx="32" fill="#ffffff" fill-opacity="0.1"/>'
+        + text(124, 32, "פלייליסטור", "#ffffff", "600", "0.9")
+        + text(260, 80, "הטעם המוזיקלי שלי", "#ffffff", "700")
+        + text(450, 180, f"{total:,}", accent, "800")
+        + text(520, 44, "שירים שאהבתי", "#ffffff", "400", "0.78")
+        + tile_html
+        + bars
+        + text(1280, 34, "ומה הטעם שלכם?", "#ffffff", "600", "0.85")
+        + "</svg>"
     )
 
 
@@ -1559,6 +1738,77 @@ def read_ranges():
     return ranges or None
 
 
+DECADES = list(range(1950, 2030, 10))
+MISSING_CHOICE = "כדי לבנות פלייליסט, בחרו לפחות אחד: ז'אנר, מצב רוח או אירוע."
+
+
+def decade_label(decade):
+    """1990 → "שנות ה-90", 2010 → "שנות ה-2010"."""
+    return f"שנות ה-{decade % 100:02d}" if decade < 2000 else f"שנות ה-{decade}"
+
+
+def decade_options(first_label):
+    return f'<option value="">{escape(first_label)}</option>' + "".join(
+        f'<option value="{d}">{escape(decade_label(d))}</option>' for d in DECADES
+    )
+
+
+def build_form(error=""):
+    """
+    טופס יצירת פלייליסט. חובה לבחור לפחות אחד מהשלושה: ז'אנר, מצב רוח או אירוע,
+    והם מסומנים יחד בקבוצה אחת עם כוכבית. השאר רשות.
+    """
+    req = '<span class="req" aria-hidden="true">*</span>'
+    return page(
+        "<h1>צור פלייליסט</h1>"
+        + (f'<div class="form-error" role="alert" id="build-error">{escape(error)}</div>' if error
+           else '<div class="form-error" role="alert" id="build-error" hidden></div>')
+        + '<form method="post" class="card" id="build-form" novalidate>'
+        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
+        f'<label class="field">מאיפה לקחת שירים{req}<select name="source" required>'
+        '<option value="search">🌍 מכל ספוטיפיי</option>'
+        '<option value="liked">❤️ רק מהשירים שאהבתי</option></select></label>'
+        f'<fieldset class="group{" invalid" if error else ""}" id="must-pick">'
+        f'<legend>מה מתאים לכם?{req}</legend>'
+        '<p class="note" style="margin-top:0">חובה לבחור לפחות אחד מהשלושה.</p>'
+        f'<label class="field">🎵 ז\'אנר<select name="genre_choice">{genre_options()}</select></label>'
+        '<label class="field">או ז\'אנר אחר<span class="hint">באנגלית, למשל: reggaeton, afrobeats</span>'
+        '<input type="text" name="genre" placeholder="לא חובה"></label>'
+        '<label class="field">😊 מצב רוח<select name="mood"><option value="">ללא</option>'
+        + options(GENRE_HINTS.keys())
+        + "</select></label>"
+        '<label class="field">📍 אירוע או סיטואציה<select name="event"><option value="">ללא</option>'
+        + "".join(
+            f'<optgroup label="{escape(group)}">{options(events.keys())}</optgroup>'
+            for group, events in EVENT_GROUPS.items()
+        )
+        + "</select></label></fieldset>"
+        '<label class="field">🗣 שפה<select name="language">'
+        + options(LANGUAGES)
+        + "</select></label>"
+        '<div class="toolbar">'
+        f'<label class="field">📅 מעשור<select name="decade_from">{decade_options("כל העשורים")}</select></label>'
+        f'<label class="field">עד עשור<select name="decade_to">{decade_options("עד היום")}</select></label>'
+        "</div><br>"
+        f'<label class="field">כמות שירים{req}<span class="hint">בין 5 ל-{MAX_TRACKS}</span>'
+        f'<input name="count" type="number" value="20" min="5" max="{MAX_TRACKS}" required></label>'
+        '<label class="check"><input type="checkbox" name="personal" checked> לשלב שירים של האמנים המועדפים עליי</label>'
+        '<details class="card"><summary>כוונון ידני (רשות)</summary>'
+        '<label class="check"><input type="checkbox" name="manual"> להשתמש בטווחים שאני קובע, במקום ברירת המחדל לפי מצב הרוח והאירוע</label>'
+        + "".join(
+            f'<label class="field">{label}: <output id="out-{key}">0% עד 100%</output>'
+            f'<input type="range" name="{key}_min" min="0" max="100" value="0">'
+            f'<input type="range" name="{key}_max" min="0" max="100" value="100"></label>'
+            for key, label in (("energy", "אנרגיה"), ("danceability", "ריקוד"), ("valence", "שמחה"))
+        )
+        + "</details>"
+        f'<p class="note"><span class="req">*</span> שדה חובה</p>'
+        '<button class="btn" type="submit">✨ הצג שירים</button>'
+        "</form>",
+        title="צור פלייליסט", script=RANGE_JS + BUILD_CHECK_JS.replace("__MESSAGE__", json.dumps(MISSING_CHOICE)),
+    )
+
+
 @app.route("/build", methods=["GET", "POST"])
 def build():
     sp = get_spotify_client()
@@ -1566,51 +1816,12 @@ def build():
         return redirect("/login")
 
     if request.method == "GET":
-        return page(
-            "<h1>צור פלייליסט</h1>"
-            '<form method="post" class="card">'
-            f'<input type="hidden" name="csrf" value="{csrf_token()}">'
-            '<label class="field">מאיפה לקחת שירים<select name="source">'
-            '<option value="search">מכל ספוטיפיי</option>'
-            '<option value="liked">רק מהשירים שאהבתי</option></select></label>'
-            f'<label class="field">ז\'אנר<select name="genre_choice">{genre_options()}</select></label>'
-            '<label class="field">או ז\'אנר אחר (באנגלית, למשל: reggaeton, afrobeats)'
-            '<input type="text" name="genre" placeholder="לא חובה"></label>'
-            '<label class="field">מצב רוח<select name="mood"><option value="">ללא</option>'
-            + options(GENRE_HINTS.keys())
-            + "</select></label>"
-            '<label class="field">אירוע או סיטואציה<select name="event"><option value="">ללא</option>'
-            + "".join(
-                f'<optgroup label="{escape(group)}">{options(events.keys())}</optgroup>'
-                for group, events in EVENT_GROUPS.items()
-            )
-            + "</select></label>"
-            '<label class="field">שפה<select name="language">'
-            + options(LANGUAGES)
-            + "</select></label>"
-            '<div class="toolbar">'
-            '<label class="field">שנת יציאה, מ-<input type="number" name="year_from" min="1900" max="2100" placeholder="למשל 1990"></label>'
-            '<label class="field">עד<input type="number" name="year_to" min="1900" max="2100" placeholder="למשל 2000"></label>'
-            "</div>"
-            f'<label class="field">כמות שירים (5 עד {MAX_TRACKS})'
-            f'<input name="count" type="number" value="20" min="5" max="{MAX_TRACKS}"></label>'
-            '<label class="check"><input type="checkbox" name="personal" checked> שלב שירים של האמנים המועדפים עליי</label>'
-            '<details class="card"><summary>כוונון ידני (אופציונלי)</summary>'
-            '<label class="check"><input type="checkbox" name="manual"> להשתמש בטווחים שאני קובע, במקום ברירת המחדל לפי מצב הרוח והאירוע</label>'
-            + "".join(
-                f'<label class="field">{label}: <output id="out-{key}">0% עד 100%</output>'
-                f'<input type="range" name="{key}_min" min="0" max="100" value="0">'
-                f'<input type="range" name="{key}_max" min="0" max="100" value="100"></label>'
-                for key, label in (("energy", "אנרגיה"), ("danceability", "ריקוד"), ("valence", "שמחה"))
-            )
-            + "</details>"
-            '<button class="btn" type="submit">הצג שירים</button>'
-            "</form>",
-            script=RANGE_JS,
-        )
+        return build_form()
 
     # קלט מהטופס: מגבילים אורך, ומקבלים רק ערכים מהתפריטים
     criteria = read_criteria()
+    if not (criteria["genre"] or criteria["mood"] or criteria["event"]):
+        return build_form(MISSING_CHOICE), 400
     started = time.time()
     tracks = find_for(sp, criteria)
     print(f"[פלייליסטור] נבנו {len(tracks)} שירים תוך {time.time() - started:.1f} שניות")
@@ -1646,18 +1857,22 @@ def read_criteria():
 
 
 def read_years():
-    """טווח שנות יציאה, למשל 1990 עד 2000. שנה אחת חסרה פותחת את הטווח. None אם לא הוזן כלום."""
-    def year(key):
+    """
+    טווח שנות יציאה לפי עשורים, למשל משנות ה-90 עד שנות ה-2000 → 1990 עד 2009.
+    עשור אחד חסר פותח את הטווח. None אם לא נבחר כלום.
+    """
+    def decade(key):
         try:
             value = int(request.form.get(key, ""))
         except ValueError:
             return None
-        return value if 1900 <= value <= 2100 else None
-    low, high = year("year_from"), year("year_to")
+        return value if value in DECADES else None
+    low, high = decade("decade_from"), decade("decade_to")
     if low is None and high is None:
         return None
     low, high = low or 1900, high or 2100
-    return (min(low, high), max(low, high))
+    low, high = min(low, high), max(low, high)
+    return (low, high + 9 if high < 2100 else high)
 
 
 def find_for(sp, criteria, exclude=(), count=None):
