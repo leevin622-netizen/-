@@ -1363,7 +1363,7 @@ def my_stats():
     decade_rows = [(decade_label(decade), c) for decade, c in sorted(decades.items())]
 
     # הכרטיס בלי אמוג'י (ראו share_card_svg), והטקסט לשיתוף עם אמוג'י
-    tiles, lines = [], ["🎧 הטעם המוזיקלי שלי", f"❤️ {len(saved):,} שירים שאהבתי"]
+    tiles, lines = [], ["🎧 ככה נשמע הטעם המוזיקלי שלי", f"❤️ {len(saved):,} שירים שאהבתי. אפס חרטות 😎"]
     if top_artists:
         tiles.append(("האמן שהכי אהבתי", top_artists[0][0]))
         lines.append(f"🎤 האמן שהכי אהבתי: {top_artists[0][0]}")
@@ -1377,7 +1377,7 @@ def my_stats():
     if len(top_artists) >= 3:
         medals = ("🥇", "🥈", "🥉")
         lines.append("🏆 הטופ 3 שלי: " + "  ".join(f"{m} {name}" for m, (name, _) in zip(medals, top_artists)))
-    lines.append(f"✨ ומה הטעם שלכם? גלו בפלייליסטור 👉 {public_site()}")
+    lines.append(f"👀 חושבים שיש לכם טעם יותר טוב? תוכיחו 👉 {public_site()}")
     card_text = "\n".join(lines)
     theme = current_vibe()["theme"]
 
@@ -1473,10 +1473,10 @@ def share_card_svg(total, tiles, theme):
         + text(124, 32, "פלייליסטור", "#ffffff", "600", "0.9")
         + text(260, 80, "הטעם המוזיקלי שלי", "#ffffff", "700")
         + text(450, 180, f"{total:,}", accent, "800")
-        + text(520, 44, "שירים שאהבתי", "#ffffff", "400", "0.78")
+        + text(520, 44, "שירים שאהבתי. אפס חרטות.", "#ffffff", "400", "0.78")
         + tile_html
         + bars
-        + text(1280, 34, "ומה הטעם שלכם?", "#ffffff", "600", "0.85")
+        + text(1280, 34, "חושבים שיש לכם טעם יותר טוב? בדקו בפלייליסטור", "#ffffff", "600", "0.85")
         + "</svg>"
     )
 
