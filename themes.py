@@ -9,13 +9,13 @@ THEMES = {
                 "colors": ("#e0a84a", "#b45f3c", "#2f8f8a")},
     "rock": {"label": "רוק", "emoji": "🎸", "accent": "#f19a8b", "on_accent": "#111",
              "colors": ("#7a2e2a", "#c2564b", "#2a2a2e")},
-    "hiphop": {"label": "היפ הופ", "emoji": "🎤", "accent": "#f6c177", "on_accent": "#111",
+    "hiphop": {"label": "ראפ", "emoji": "🎤", "accent": "#f6c177", "on_accent": "#111",
                "colors": ("#c97b3a", "#d9a441", "#34343a")},
-    "electronic": {"label": "אלקטרוני", "emoji": "⚡", "accent": "#7dd3fc", "on_accent": "#111",
+    "electronic": {"label": "דאנס", "emoji": "⚡", "accent": "#7dd3fc", "on_accent": "#111",
                    "colors": ("#38bdf8", "#6d5bd0", "#2b8a9e")},
-    "chill": {"label": "רגוע", "emoji": "🌊", "accent": "#8ee3cf", "on_accent": "#111",
+    "chill": {"label": "צ'יל", "emoji": "🌊", "accent": "#8ee3cf", "on_accent": "#111",
               "colors": ("#2c7a72", "#2f4a8a", "#6cc9b5")},
-    "default": {"label": "קלאסי", "emoji": "🎧", "accent": "#6ee7a0", "on_accent": "#111",
+    "default": {"label": "מיקס", "emoji": "🎧", "accent": "#6ee7a0", "on_accent": "#111",
                 "colors": ("#2f9e64", "#164a3a", "#2c4a8a")},
 }
 
