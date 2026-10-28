@@ -3,8 +3,8 @@ import random
 
 # ערכת עיצוב לכל סגנון: צבע מרכזי, צבע הטקסט עליו, ושלושה צבעים לרקע המשתנה
 THEMES = {
-    "pop": {"label": "פופ", "emoji": "💖", "accent": "#ff4fa3", "on_accent": "#000",
-            "colors": ("#ff4fa3", "#8b5cf6", "#ffb347")},
+    "pop": {"label": "פופ", "emoji": "💖", "accent": "#b794f6", "on_accent": "#000",
+            "colors": ("#b794f6", "#7c5ccf", "#ffb347")},
     "mizrahi": {"label": "מזרחית", "emoji": "🌙", "accent": "#f5b301", "on_accent": "#000",
                 "colors": ("#f5b301", "#d9480f", "#0ca5a5")},
     "rock": {"label": "רוק", "emoji": "🎸", "accent": "#ff3b30", "on_accent": "#000",
@@ -176,7 +176,7 @@ BACKGROUND_CSS = """
 .blob {
   position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size);
   border-radius: 50%; background: radial-gradient(closest-side, var(--c), transparent 72%);
-  opacity: .5; animation: drift var(--morph) ease-in-out infinite alternate; will-change: translate, scale;
+  opacity: .38; animation: drift var(--morph) ease-in-out infinite alternate; will-change: translate, scale;
 }
 .drop {
   position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size);
@@ -195,9 +195,9 @@ BACKGROUND_CSS = """
 }
 .bg-shade {
   position: fixed; inset: 0; z-index: -1;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,.35), rgba(0,0,0,.8));
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.5), rgba(0,0,0,.88));
 }
-.bg-shade.light { background: radial-gradient(ellipse at center, rgba(0,0,0,.1), rgba(0,0,0,.55)); }
+.bg-shade.light { background: radial-gradient(ellipse at center, rgba(0,0,0,.25), rgba(0,0,0,.65)); }
 @keyframes colors { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 @keyframes slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .beam {

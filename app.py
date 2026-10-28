@@ -9,6 +9,7 @@ import requests
 import spotipy
 from spotipy.cache_handler import MemoryCacheHandler
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth, SpotifyOauthError
+from urllib.parse import quote_plus
 from lastfm import get_tags_for_artists, get_user_playcounts
 import library
 import ratelimit
@@ -106,13 +107,13 @@ MAX_SAVE = 2000
 
 STYLE = """
 :root {
-  --bg: #121212; --card: rgba(18, 18, 18, .72); --card-hover: rgba(50, 50, 50, .8); --text: #f2f2f2;
-  --muted: #c4c4c4; --border: rgba(255, 255, 255, .14);
+  --bg: #121212; --card: rgba(18, 18, 18, .84); --card-hover: rgba(50, 50, 50, .88); --text: #f2f2f2;
+  --muted: #d6d6d6; --border: rgba(255, 255, 255, .14);
 }
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--bg); color: var(--text); min-height: 100vh;
-  font-family: "Segoe UI", Arial, sans-serif; line-height: 1.5;
+  font-family: "Segoe UI", Arial, sans-serif; font-size: 16px; line-height: 1.5;
 }
 .wrap { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
 header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
@@ -121,7 +122,7 @@ header { display: flex; align-items: center; justify-content: space-between; fle
 header a.logo { color: var(--text); text-decoration: none; font-size: 22px; font-weight: 700; white-space: nowrap; }
 header .user { color: var(--muted); font-size: 14px; }
 header .user a { color: var(--muted); margin-inline-start: 8px; display: inline-flex; align-items: center; min-height: 40px; }
-h1 { font-size: 24px; margin: 8px 0 16px; }
+h1 { font-size: 26px; margin: 8px 0 16px; text-align: start; }
 a { color: var(--accent); }
 .menu { display: grid; gap: 12px; }
 .menu a {
@@ -129,18 +130,18 @@ a { color: var(--accent); }
   padding: 18px; border-radius: 12px; font-size: 17px;
 }
 .menu a:hover { background: var(--card-hover); }
-.menu a small { display: block; color: var(--muted); font-size: 14px; }
+.menu a small { display: block; color: var(--muted); font-size: 15px; }
 .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 .menu a, .card, .list li, .stats div, .table-wrap, .vibe {
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
 .vibe {
-  display: inline-flex; gap: 6px; align-items: center; margin-bottom: 16px; padding: 6px 14px;
-  border-radius: 16px; background: var(--card); border: 1px solid var(--accent); font-size: 14px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 16px; padding: 12px 16px;
+  border-radius: 16px; background: var(--card); border: 1px solid var(--accent); font-size: 17px;
 }
 .vibe .note { flex-basis: 100%; }
 h1 { text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
-label.field { display: block; margin-bottom: 14px; color: var(--muted); font-size: 14px; }
+label.field { display: block; margin-bottom: 14px; color: #e6e6e6; font-size: 15px; }
 input[type=text], input[type=number], select {
   display: block; width: 100%; margin-top: 4px; padding: 10px 12px; font-size: 16px;
   background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
@@ -162,7 +163,7 @@ label.check { display: flex; gap: 8px; align-items: center; margin-bottom: 14px;
 .list .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list .sub { color: var(--muted); font-size: 14px; }
 .list input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
-.note { color: #ececec; font-size: 14px; text-shadow: 0 1px 6px rgba(0, 0, 0, .45); }
+.note { color: #ececec; font-size: 15px; text-shadow: 0 1px 6px rgba(0, 0, 0, .45); }
 .success { background: #133d24; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 .wide { max-width: 1100px; }
 .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -179,6 +180,9 @@ th.asc::after { content: " ▲"; } th.desc::after { content: " ▼"; }
 td img, td .noimg { width: 36px; height: 36px; border-radius: 4px; display: block; background: var(--border); }
 td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 td.muted { color: var(--muted); }
+#tracks th, #tracks td { padding: 6px; font-size: 13px; }
+#tracks td.name { max-width: 150px; }
+.list .yt { min-height: 32px; padding: 4px 12px; font-size: 14px; }
 tr:hover td { background: var(--card-hover); }
 td input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
@@ -189,7 +193,7 @@ a.sp { color: inherit; text-decoration: none; }
 a.sp:hover { color: var(--accent); text-decoration: underline; }
 .list form { margin: 0; flex: none; }
 .list .btn { width: auto; padding: 8px 14px; font-size: 14px; white-space: nowrap; }
-h2 { font-size: 19px; margin: 22px 0 10px; text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
+h2 { font-size: 20px; margin: 24px 0 10px; text-align: start; text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .vibe-switch { margin: 0; }
 .vibe-switch select {
@@ -740,6 +744,12 @@ def track_row(track, checkbox=False, feat=None, preview=""):
         f'<button type="button" class="play" data-src="{escape(preview)}" aria-pressed="false" '
         'aria-label="השמעת 30 השניות הראשונות של השיר">▶</button>'
     ) if preview else ""
+    # בלי קטע, כפתור שפותח חיפוש ביוטיוב של השיר בלשונית חדשה, כדי לשמוע את הפזמון
+    search = "" if preview else (
+        f'<a class="btn secondary yt" target="_blank" rel="noopener" '
+        f'href="https://www.youtube.com/results?search_query={quote_plus(track["artist"] + " " + track["name"])}" '
+        f'aria-label="חיפוש ביוטיוב: {escape(track["name"])}">▶ יוטיוב</a>'
+    )
     moves = (
         '<span class="moves">'
         '<button type="button" class="move" data-dir="-1" aria-label="העברה למעלה">▲</button>'
@@ -749,7 +759,7 @@ def track_row(track, checkbox=False, feat=None, preview=""):
         f"<li{attrs}>{check}{spotify_link('', 'album', track.get('album_id'), cover(track.get('image', '')))}"
         f"<div class=\"info\"><div class=\"title\">{spotify_link(track['name'], 'track', track.get('id'))}</div>"
         f"<div class=\"sub\">{artist_links(track)}{(' · ' + escape(info)) if info else ''}</div></div>"
-        f"{play}{moves}</li>"
+        f"{play}{search}{moves}</li>"
     )
 
 
@@ -1095,7 +1105,6 @@ def saved_tracks():
     uid = user_id(sp)
     saved = library.cached(uid, "saved", lambda: library.all_saved_tracks(sp))
     track_ranks, _ = library.cached(uid, "top_tracks", lambda: library.top_ranks(sp, "tracks"))
-    plays, _ = library.cached(uid, "lastfm", get_user_playcounts)
 
     tracks = []
     for item in saved:
@@ -1107,15 +1116,12 @@ def saved_tracks():
             duration=track.get("duration_ms") or 0,
             popularity=track.get("popularity"),
             rank=library.best_rank(track_ranks.get(track["id"])),
-            plays=plays.get((track["artists"][0]["name"].lower(), track["name"].lower())) if plays else None,
         )
         tracks.append(result)
 
     columns = [("", None), ("", None), ("שיר", "text"), ("אמן", "text"), ("אלבום", "text"),
                ("נוסף בתאריך", "text"), ("אורך", "num"), ("פופולריות", "num"),
                ("הדירוג שלך", "num")]
-    if plays is not None:
-        columns.append(("השמעות (Last.fm)", "num"))
     rows = []
     for t in tracks:
         row = (
@@ -1130,18 +1136,13 @@ def saved_tracks():
             # בדירוג, מקום 1 הוא הכי טוב, ולכן ממיינים לפי מספר שלילי
             + cell(format_rank(t["rank"]), -t["rank"][0] if t["rank"] else "")
         )
-        if plays is not None:
-            row += cell("" if t["plays"] is None else t["plays"], "" if t["plays"] is None else t["plays"])
         rows.append(f"<tr>{row}</tr>")
 
     artists_count = len({a for t in tracks for a, _ in t["artists"]})
     total_hours = sum(t["duration"] for t in tracks) / 3_600_000
     note = (
-        ""
-        if plays is not None
-        else '<p class="note">ספוטיפיי לא חושף כמה פעמים שמעת כל שיר. "הדירוג שלך" הוא המקום של השיר '
-        "ב-50 השירים שאתה הכי שומע (ב-4 השבועות האחרונים, ב-6 החודשים האחרונים, או בכל הזמנים). "
-        "למספר השמעות אמיתי, חבר את ספוטיפיי ל-Last.fm והוסף LASTFM_USER לקובץ .env.</p>"
+        '<p class="note">"הדירוג שלך" הוא המקום של השיר ב-50 השירים שאתה הכי שומע '
+        "(ב-4 השבועות האחרונים, ב-6 החודשים האחרונים, או בכל הזמנים).</p>"
     )
     return page(
         "<h1>כל השירים שאהבתי</h1>"
@@ -1262,18 +1263,21 @@ def my_stats():
 
     top_artists = [(names[i], c) for i, c in artist_counts.most_common(10)]
     top_genres = [(GENRE_NAMES.get(tag, tag), c) for tag, c in genre_counts.most_common(10)]
-    decade_rows = [(f"שנות {decade}", c) for decade, c in sorted(decades.items())]
+    decade_rows = [(decade_label(decade), c) for decade, c in sorted(decades.items())]
 
-    # בלי אמוג'י בכרטיס, כי הם לא נראים נכון בתמונה שנוצרת בדפדפן
-    card_lines = [f"{len(saved)} שירים שאהבתי"]
+    # הטקסט להעתקה כולל אימוג'י בכל שורה. התמונה עצמה בלי אימוג'י, כי הם לא נראים נכון בתמונה שנוצרת בדפדפן
+    card_items = [("❤️", f"{len(saved)} שירים שאהבתי")]
     if top_artists:
-        card_lines.append(f"האמן שאני הכי אוהב: {top_artists[0][0]}")
+        card_items.append(("🎤", f"האמן שאני הכי אוהב: {top_artists[0][0]}"))
     if top_genres:
-        card_lines.append(f"הז'אנר המוביל: {top_genres[0][0]}")
+        card_items.append(("🎶", f"הז'אנר המוביל: {top_genres[0][0]}"))
     if decades:
         best_decade = max(decades.items(), key=lambda kv: kv[1])[0]
-        card_lines.append(f"העשור האהוב: שנות {best_decade}")
-    card_text = "\n".join(["הטעם המוזיקלי שלי"] + card_lines + ["פלייליסטור"])
+        card_items.append(("📅", f"העשור האהוב: {decade_label(best_decade)}"))
+    card_lines = [text for _, text in card_items]
+    card_text = "\n".join(
+        ["🎧 הטעם המוזיקלי שלי", ""] + [f"{icon} {text}" for icon, text in card_items] + ["", "✨ פלייליסטור ✨"]
+    )
 
     genres_html = (
         bar_chart(top_genres) if top_genres
@@ -1301,22 +1305,26 @@ def my_stats():
 
 
 def share_card_svg(title, lines):
-    """כרטיס לשיתוף כ-SVG בגודל 1080 על 1080. הדפדפן ממיר אותו ל-PNG כשמורידים (ראו SAVE_CARD_JS)."""
+    """כרטיס לשיתוף כ-SVG בגודל 1080 על 1080, עם מעבר צבעים בסגנון אינסטגרם. הדפדפן ממיר אותו ל-PNG (ראו SAVE_CARD_JS)."""
     rows = "".join(
-        f'<text x="990" y="{390 + i * 120}" font-size="56" fill="#ffffff" text-anchor="end" '
-        f'font-family="Arial, sans-serif">{escape(line[:48])}</text>'
-        for i, line in enumerate(lines)
+        f'<text x="980" y="{420 + i * 130}" font-size="54" font-weight="bold" fill="#ffffff" text-anchor="end" '
+        f'font-family="Arial, sans-serif">{escape(line[:30])}</text>'
+        for i, line in enumerate(lines[:5])
     )
     return (
         '<svg id="card-svg" class="share-svg" xmlns="http://www.w3.org/2000/svg" '
         'width="1080" height="1080" viewBox="0 0 1080 1080">'
         '<defs><linearGradient id="card-bg" x1="0" y1="0" x2="1" y2="1">'
-        '<stop offset="0" stop-color="#1db954"/><stop offset="1" stop-color="#191414"/></linearGradient></defs>'
+        '<stop offset="0" stop-color="#7c3aed"/><stop offset="0.5" stop-color="#db2777"/>'
+        '<stop offset="1" stop-color="#f59e0b"/></linearGradient></defs>'
         '<rect width="1080" height="1080" fill="url(#card-bg)"/>'
-        f'<text x="990" y="220" font-size="72" font-weight="bold" fill="#ffffff" text-anchor="end" '
+        '<circle cx="110" cy="120" r="240" fill="#ffffff" fill-opacity="0.08"/>'
+        '<circle cx="990" cy="980" r="320" fill="#ffffff" fill-opacity="0.08"/>'
+        f'<text x="980" y="220" font-size="80" font-weight="bold" fill="#ffffff" text-anchor="end" '
         f'font-family="Arial, sans-serif">{escape(title)}</text>'
+        '<rect x="680" y="250" width="300" height="8" rx="4" fill="#ffffff"/>'
         + rows
-        + '<text x="90" y="1000" font-size="40" fill="#ffffff" fill-opacity="0.8" '
+        + '<text x="100" y="990" font-size="46" font-weight="bold" fill="#ffffff" fill-opacity="0.9" '
         'font-family="Arial, sans-serif">פלייליסטור</text>'
         "</svg>"
     )
@@ -1570,16 +1578,17 @@ def build():
             "<h1>צור פלייליסט</h1>"
             '<form method="post" class="card">'
             f'<input type="hidden" name="csrf" value="{csrf_token()}">'
+            '<p class="note">השדות עם * : בחרו לפחות אחד מהם. השאר אופציונליים.</p>'
             '<label class="field">מאיפה לקחת שירים<select name="source">'
             '<option value="search">מכל ספוטיפיי</option>'
             '<option value="liked">רק מהשירים שאהבתי</option></select></label>'
-            f'<label class="field">ז\'אנר<select name="genre_choice">{genre_options()}</select></label>'
+            f'<label class="field">ז\'אנר *<select name="genre_choice">{genre_options()}</select></label>'
             '<label class="field">או ז\'אנר אחר (באנגלית, למשל: reggaeton, afrobeats)'
             '<input type="text" name="genre" placeholder="לא חובה"></label>'
-            '<label class="field">מצב רוח<select name="mood"><option value="">ללא</option>'
+            '<label class="field">מצב רוח *<select name="mood"><option value="">ללא</option>'
             + options(GENRE_HINTS.keys())
             + "</select></label>"
-            '<label class="field">אירוע או סיטואציה<select name="event"><option value="">ללא</option>'
+            '<label class="field">אירוע או סיטואציה *<select name="event"><option value="">ללא</option>'
             + "".join(
                 f'<optgroup label="{escape(group)}">{options(events.keys())}</optgroup>'
                 for group, events in EVENT_GROUPS.items()
@@ -1589,8 +1598,8 @@ def build():
             + options(LANGUAGES)
             + "</select></label>"
             '<div class="toolbar">'
-            '<label class="field">שנת יציאה, מ-<input type="number" name="year_from" min="1900" max="2100" placeholder="למשל 1990"></label>'
-            '<label class="field">עד<input type="number" name="year_to" min="1900" max="2100" placeholder="למשל 2000"></label>'
+            f'<label class="field">עשור יציאה, מ-<select name="year_from">{decade_options(False)}</select></label>'
+            f'<label class="field">עד<select name="year_to">{decade_options(True)}</select></label>'
             "</div>"
             f'<label class="field">כמות שירים (5 עד {MAX_TRACKS})'
             f'<input name="count" type="number" value="20" min="5" max="{MAX_TRACKS}"></label>'
@@ -1611,6 +1620,9 @@ def build():
 
     # קלט מהטופס: מגבילים אורך, ומקבלים רק ערכים מהתפריטים
     criteria = read_criteria()
+    if not (criteria["genre"] or criteria["mood"] or criteria["event"]):
+        return page('<p class="warn">בחרו לפחות ז\'אנר אחד, מצב רוח או אירוע, ואז הציגו שירים. '
+                    '<a href="/build">חזרה ליצירת פלייליסטור</a>.</p>')
     started = time.time()
     tracks = find_for(sp, criteria)
     print(f"[פלייליסטור] נבנו {len(tracks)} שירים תוך {time.time() - started:.1f} שניות")
@@ -1643,6 +1655,21 @@ def read_criteria():
         "count": count, "personal": "personal" in request.form,
         "ranges": read_ranges(), "years": read_years(),
     }
+
+
+def decade_label(decade):
+    """שנות עשור בעברית: שנות ה-90, שנות ה-2010. בלי שנה מלאה מ-1900."""
+    return f"שנות ה-{decade % 100}" if decade < 2000 else f"שנות ה-{decade}"
+
+
+def decade_options(end):
+    """בחירת עשור מלא, בתחילתו או בסופו. הערך הוא שנה, כמו שהחיפוש מצפה לו."""
+    options = ['<option value="">לא משנה</option>']
+    for decade in range(1950, 2030, 10):
+        value = decade + 9 if end else decade
+        label = ("עד " if end else "") + decade_label(decade)
+        options.append(f'<option value="{value}">{label}</option>')
+    return "".join(options)
 
 
 def read_years():
