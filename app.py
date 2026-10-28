@@ -12,6 +12,7 @@ from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth, SpotifyOauthE
 from lastfm import get_tags_for_artists
 import library
 import ratelimit
+import i18n
 import themes
 import favourites
 import json
@@ -269,6 +270,12 @@ table.numbered tbody td:first-child::before {
   position: absolute; top: -12px; inset-inline-start: -12px; width: 32px; height: 32px; border-radius: 50%;
   background: var(--card-hover); color: var(--text); border: 1px solid var(--border); cursor: pointer;
 }
+.langs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.langs a {
+  color: var(--text); text-decoration: none; border: 1px solid var(--border); border-radius: 999px;
+  padding: 4px 12px; font-size: 14px; background: var(--card); min-height: 32px; display: inline-flex; align-items: center;
+}
+.langs a[aria-current="true"] { border-color: var(--accent); color: var(--accent); }
 """ + themes.BACKGROUND_CSS
 
 # מיון טבלה בלחיצה על כותרת, וסינון לפי טקסט חופשי
@@ -708,7 +715,7 @@ def page(body, title="פלייליסטור", wide=False, script="", theme=None, 
     )
     switch = vibe_switch() if session.get("token_info") else ""
     return (
-        '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">'
+        f'<!doctype html><html lang="{i18n.lang()}" dir="{i18n.direction()}"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{escape(title)}</title><style>{STYLE}{themes.theme_css(theme)}</style></head><body>"
         + themes.background_html(images, theme)
@@ -1081,6 +1088,14 @@ def save_favourite_track():
     return redirect(favourites_url(request.form.get("q", "").strip()[:100]))
 
 
+@app.route("/lang/<code>")
+def set_language(code):
+    """שינוי שפת הממשק. נשמר בסשן, וחוזרים לעמוד הבית."""
+    if code in i18n.CODES:
+        session["lang"] = code
+    return redirect("/")
+
+
 @app.route("/")
 def home():
     if session.get("token_info") and session.get("scope") != SCOPE:
@@ -1090,9 +1105,9 @@ def home():
     if not session.get("token_info"):
         relogin = session.pop("relogin", False)
         return page(
-            "<h1>פלייליסטים שמתאימים בדיוק לרגע</h1>"
-            '<p class="note">בחרו ז\'אנר, מצב רוח ואירוע, ופלייליסטור יבנה לכם פלייליסט חדש בספוטיפיי.</p>'
-            '<a class="btn" href="/login">התחברות עם ספוטיפיי</a>'
+            f"<h1>{i18n.t('login.title')}</h1>{i18n.language_links()}"
+            f'<p class="note">{i18n.t("login.note")}</p>'
+            f'<a class="btn" href="/login">{i18n.t("login.button")}</a>'
             + (RELOGIN_NOTE if relogin else ""),
             images=login_images(),
         )
@@ -1105,30 +1120,30 @@ def home():
     vibe = themes.THEMES[current_vibe()["theme"]]
     auto = themes.THEMES[auto_vibe()["theme"]]
     return page(
-        "<h1>מה נשמע היום?</h1>"
+        f"<h1>{i18n.t('home.title')}</h1>{i18n.language_links()}"
         f'<div class="vibe"><span class="vibe-emoji" aria-hidden="true">{vibe["emoji"]}</span>'
-        f'<span class="vibe-text"><b>הווייב שלך עכשיו: {escape(vibe["label"])}</b>'
+        f'<span class="vibe-text"><b>{i18n.t("vibe.now")} {escape(i18n.theme_label(current_vibe()["theme"]))}</b>'
         + (
-            "<span>בול מה שהכי מתנגן אצלך לאחרונה 🔥</span>" if vibe is auto
-            else f'<span>מה שהכי מתנגן אצלך: {auto["emoji"]} {escape(auto["label"])} · אפשר להחליף בתפריט למעלה</span>'
+            f"<span>{i18n.t('vibe.auto')}</span>" if vibe is auto
+            else f'<span>{i18n.t("vibe.other", emoji=auto["emoji"], label=escape(i18n.theme_label(auto_vibe()["theme"])))}</span>'
         )
         + "</span></div>"
         + '<div class="menu">'
         + onboarding_card
-        + '<a href="/build">✨ צור פלייליסט חדש<small>לפי ז\'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a>'
-        '<a href="/saved-tracks">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם השמעת קטעים ומיון לפי אמן, תאריך ועוד</small></a>'
-        '<a href="/my-artists">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a>'
-        '<a href="/stats">📊 הסטטיסטיקות שלי<small>ז\'אנרים, עשורים, אמנים מובילים וכרטיס לשיתוף</small></a>'
-        '<a href="/my-playlists">🛠 הפלייליסטים שיצרתי<small>שינוי שם, הסרת שירים וסידור</small></a>'
+        + f'<a href="/build">✨ {i18n.t("menu.build.title")}<small>{i18n.t("menu.build.small")}</small></a>'
+        f'<a href="/saved-tracks">❤️ {i18n.t("menu.saved.title")}<small>{i18n.t("menu.saved.small")}</small></a>'
+        f'<a href="/my-artists">🎤 {i18n.t("menu.artists.title")}<small>{i18n.t("menu.artists.small")}</small></a>'
+        f'<a href="/stats">📊 {i18n.t("menu.stats.title")}<small>{i18n.t("menu.stats.small")}</small></a>'
+        f'<a href="/my-playlists">🛠 {i18n.t("menu.mine.title")}<small>{i18n.t("menu.mine.small")}</small></a>'
         "</div>"
         '<p class="note">הנתונים נשמרים לכמה שעות כדי שהאפליקציה תהיה מהירה. '
-        '<a href="/refresh">רענון נתונים מספוטיפיי</a></p>'
+        f'<a href="/refresh">{i18n.t("home.refresh")}</a></p>'
         '<form method="post" action="/delete-data" class="card" '
         'onsubmit="return confirm(\'למחוק מהשרת את הנתונים ששמורים עליכם? חשבון הספוטיפיי שלכם לא ישתנה.\')">'
         f'<input type="hidden" name="csrf" value="{csrf_token()}">'
         '<p class="note">הנתונים שנשמרו בשרת: הספרייה ושירים שאהבתם, כדי שהאפליקציה תהיה מהירה. '
         'מחיקה כאן לא משנה שום דבר בספוטיפיי.</p>'
-        '<button class="btn secondary" type="submit">מחיקת הנתונים שלי מהשרת</button></form>'
+        f'<button class="btn secondary" type="submit">{i18n.t("home.delete")}</button></form>'
     )
 
 
@@ -1738,39 +1753,39 @@ def build_form(error=""):
     """
     req = '<span class="req" aria-hidden="true">*</span>'
     return page(
-        "<h1>צור פלייליסט</h1>"
+        f"<h1>{i18n.t('build.title')}</h1>"
         + (f'<div class="form-error" role="alert" id="build-error">{escape(error)}</div>' if error
            else '<div class="form-error" role="alert" id="build-error" hidden></div>')
         + '<form method="post" class="card" id="build-form" novalidate>'
         f'<input type="hidden" name="csrf" value="{csrf_token()}">'
-        f'<label class="field">מאיפה לקחת שירים{req}<select name="source" required>'
-        '<option value="search">🌍 מכל ספוטיפיי</option>'
-        '<option value="liked">❤️ רק מהשירים שאהבתי</option></select></label>'
+        f'<label class="field">{i18n.t("build.source")}{req}<select name="source" required>'
+        f'<option value="search">{i18n.t("build.source_search")}</option>'
+        f'<option value="liked">{i18n.t("build.source_liked")}</option></select></label>'
         f'<fieldset class="group{" invalid" if error else ""}" id="must-pick">'
-        f'<legend>מה מתאים לכם?{req}</legend>'
-        '<p class="note" style="margin-top:0">חובה לבחור לפחות אחד מהשלושה.</p>'
-        f'<label class="field">🎵 ז\'אנר<select name="genre_choice">{genre_options()}</select></label>'
-        '<label class="field">😊 מצב רוח<select name="mood"><option value="">ללא</option>'
+        f'<legend>{i18n.t("build.must")}{req}</legend>'
+        f'<p class="note" style="margin-top:0">{i18n.t("build.must_note")}</p>'
+        f'<label class="field">{i18n.t("build.genre")}<select name="genre_choice">{genre_options()}</select></label>'
+        f'<label class="field">{i18n.t("build.mood")}<select name="mood"><option value="">ללא</option>'
         + options(GENRE_HINTS.keys())
         + "</select></label>"
-        '<label class="field">📍 אירוע או סיטואציה<select name="event"><option value="">ללא</option>'
+        f'<label class="field">{i18n.t("build.event")}<select name="event"><option value="">ללא</option>'
         + "".join(
             f'<optgroup label="{escape(group)}">{options(events.keys())}</optgroup>'
             for group, events in EVENT_GROUPS.items()
         )
         + "</select></label></fieldset>"
-        '<label class="field">🗣 שפה<select name="language">'
+        f'<label class="field">{i18n.t("build.language")}<select name="language">'
         + options(LANGUAGES)
         + "</select></label>"
         '<div class="toolbar">'
-        f'<label class="field">📅 מעשור<select name="decade_from">{decade_options("כל העשורים")}</select></label>'
-        f'<label class="field">עד עשור<select name="decade_to">{decade_options("עד היום")}</select></label>'
+        f'<label class="field">{i18n.t("build.decade_from")}<select name="decade_from">{decade_options("כל העשורים")}</select></label>'
+        f'<label class="field">{i18n.t("build.decade_to")}<select name="decade_to">{decade_options("עד היום")}</select></label>'
         "</div><br>"
-        f'<label class="field">כמות שירים{req}<span class="hint">בין 5 ל-{MAX_TRACKS}</span>'
+        f'<label class="field">{i18n.t("build.count")}{req}<span class="hint">{i18n.t("build.count_hint", max=MAX_TRACKS)}</span>'
         f'<input name="count" type="number" value="20" min="5" max="{MAX_TRACKS}" required></label>'
-        '<label class="check"><input type="checkbox" name="personal" checked> לשלב שירים של האמנים המועדפים עליי</label>'
-        '<p class="note"><span class="req">*</span> שדה חובה</p>'
-        '<button class="btn" type="submit">✨ הצג שירים</button>'
+        f'<label class="check"><input type="checkbox" name="personal" checked> {i18n.t("build.personal")}</label>'
+        f'<p class="note"><span class="req">*</span> {i18n.t("common.required")}</p>'
+        f'<button class="btn" type="submit">{i18n.t("build.submit")}</button>'
         "</form>",
         title="צור פלייליסט", script=BUILD_CHECK_JS.replace("__MESSAGE__", json.dumps(MISSING_CHOICE)),
     )
