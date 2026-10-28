@@ -217,6 +217,7 @@ a.sp:hover { color: var(--accent); text-decoration: underline; }
 .list .btn { width: auto; padding: 8px 14px; font-size: 14px; white-space: nowrap; }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .vibe-switch { margin: 0; }
+.lang-switch { display: flex; align-items: center; gap: 4px; }
 .vibe-switch select {
   display: block; width: auto; max-width: 140px; margin: 0; padding: 6px 10px; font-size: 14px;
   border-radius: 999px;
@@ -249,14 +250,6 @@ textarea.copy {
   width: 100%; min-height: 200px; margin: 0 0 12px; padding: 12px 14px; font-size: 15px; line-height: 1.7; font-family: inherit;
   background: var(--field); color: var(--text); border: 1px solid var(--border); border-radius: 12px; resize: vertical;
 }
-.langs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 18px; }
-.langs-label { font-size: 18px; margin-inline-end: 2px; }
-.chip {
-  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--card);
-  color: var(--text); font-size: 15px; font-family: inherit; cursor: pointer;
-}
-.chip:hover { border-color: var(--accent); }
-.chip.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
 .list.numbered { counter-reset: song; }
 .list.numbered li { counter-increment: song; }
 .list.numbered li::before {
@@ -747,25 +740,11 @@ def lang_switch():
         for code, name, _dir in LANGS
     )
     return (
-        '<form method="post" action="/lang" class="vibe-switch">'
+        '<form method="post" action="/lang" class="vibe-switch lang-switch"><span aria-hidden="true">🌐</span>'
         f'<input type="hidden" name="csrf" value="{csrf_token()}">'
         f'<input type="hidden" name="back" value="{escape(request.full_path)}">'
         f'<select name="lang" aria-label="Language" onchange="this.form.submit()">{choices}</select>'
         '<noscript><button class="btn" type="submit">OK</button></noscript></form>'
-    )
-
-
-def lang_picker():
-    """בחירת שפה בולטת בדף הבית: כפתור לכל שפה."""
-    buttons = "".join(
-        f'<button class="chip{" on" if code == lang() else ""}" type="submit" name="lang" value="{code}"'
-        f'{" aria-pressed=\"true\"" if code == lang() else ""}>{escape(name)}</button>'
-        for code, name, _dir in LANGS
-    )
-    return (
-        '<form method="post" action="/lang" class="langs">'
-        f'<input type="hidden" name="csrf" value="{csrf_token()}"><input type="hidden" name="back" value="/">'
-        f'<span class="langs-label">🌐</span>{buttons}</form>'
     )
 
 
@@ -1130,8 +1109,7 @@ def home():
     if not session.get("token_info"):
         relogin = session.pop("relogin", False)
         return page(
-            lang_picker()
-            + _("<h1>פלייליסטים שמתאימים בדיוק לרגע</h1>"
+            _("<h1>פלייליסטים שמתאימים בדיוק לרגע</h1>"
             '<p class="note">בחרו ז\'אנר, מצב רוח ואירוע, ופלייליסטור יבנה לכם פלייליסט חדש בספוטיפיי.</p>'
             '<a class="btn" href="/login">התחברות עם ספוטיפיי</a>')
             + (_(RELOGIN_NOTE) if relogin else ""),
@@ -1146,8 +1124,7 @@ def home():
     vibe = themes.THEMES[current_vibe()["theme"]]
     auto = themes.THEMES[auto_vibe()["theme"]]
     return page(
-        lang_picker()
-        + _("<h1>מה נשמע היום?</h1><div class=\"vibe\"><span class=\"vibe-emoji\" aria-hidden=\"true\">{a0}</span><span class=\"vibe-text\"><b>הווייב שלך עכשיו: {a1}</b>", a0=vibe["emoji"], a1=escape(_(vibe["label"])))
+        _("<h1>מה נשמע היום?</h1><div class=\"vibe\"><span class=\"vibe-emoji\" aria-hidden=\"true\">{a0}</span><span class=\"vibe-text\"><b>הווייב שלך עכשיו: {a1}</b>", a0=vibe["emoji"], a1=escape(_(vibe["label"])))
         + (
             _("<span>בול מה שהכי מתנגן אצלך לאחרונה 🔥</span>") if vibe is auto
             else _("<span>מה שהכי מתנגן אצלך: {a0} {a1} · אפשר להחליף בתפריט למעלה</span>", a0=auto["emoji"], a1=escape(_(auto["label"])))
