@@ -27,60 +27,44 @@ TERM_ALIASES = {
     "sing along": ["sing along songs"],
 }
 
+# 10 מצבי רוח בטופס. לכל אחד: מונחי החיפוש בספוטיפיי
 GENRE_HINTS = {
     "שמח": ["pop", "dance", "funk"],
     "עצוב": ["sad", "ballad", "indie"],
-    "ממריץ": ["rock", "electronic", "hip hop"],
+    "אנרגטי": ["rock", "electronic", "hip hop"],
     "רגוע": ["chill", "acoustic", "jazz"],
+    "רומנטי": ["romantic", "r&b", "soul"],
+    "נוסטלגי": ["oldies", "80s", "90s"],
+    "מוטיבציה": ["motivation", "hip hop", "rock"],
+    "שבור לב": ["breakup", "sad", "ballad"],
+    "בא לרקוד": ["dance", "party", "house"],
+    "חולמני": ["dream pop", "ambient", "indie"],
 }
 
-# אירועים וסיטואציות, לפי קטגוריות בתפריט. לכל אחד: מונחי החיפוש בספוטיפיי
+# 15 האירועים הנפוצים, לפי קטגוריות בתפריט. לכל אחד: מונחי החיפוש בספוטיפיי
 EVENT_GROUPS = {
-    "ספורט ותנועה": {
+    "ספורט": {
         "ריצה": ["workout", "electronic", "hip hop"],
         "חדר כושר": ["workout", "hip hop", "rock"],
-        "רכיבה על אופניים": ["workout", "dance", "electronic"],
-        "יוגה ומדיטציה": ["meditation", "ambient", "chill"],
-        "הליכה": ["pop", "indie", "acoustic"],
     },
     "יום יום": {
-        "בוקר טוב": ["morning", "acoustic", "pop"],
         "נסיעה באוטו": ["road trip", "pop", "rock"],
-        "בדרך לעבודה": ["pop", "indie", "hip hop"],
         "עבודה וריכוז": ["instrumental", "lo-fi", "chill"],
         "לימודים": ["lo-fi", "instrumental", "chill"],
         "בישול": ["jazz", "soul", "funk"],
         "ניקיון הבית": ["pop", "dance", "funk"],
-        "מקלחת": ["pop", "dance", "sing along"],
         "לפני השינה": ["sleep", "ambient", "piano"],
     },
-    "חברים ואירועים": {
+    "חגיגות": {
         "מסיבה": ["party", "dance", "house"],
         "יום הולדת": ["party", "pop", "dance"],
         "חתונה": ["wedding", "pop", "dance"],
         "על האש": ["mizrahi", "pop", "reggae"],
-        "ארוחת ערב עם חברים": ["jazz", "soul", "acoustic"],
-        "ערב רומנטי": ["romantic", "r&b", "soul"],
-        "קריוקי": ["sing along", "pop", "classic"],
-        "ערב משחקים": ["funk", "indie", "pop"],
-    },
-    "שבת וחגים": {
         "שבת בבית": ["israeli folk", "acoustic", "jewish"],
-        "חגים": ["jewish", "israeli folk", "mizrahi"],
-        "ערב שירה בציבור": ["israeli folk", "sing along", "acoustic"],
     },
-    "טבע וחופש": {
+    "בחוץ": {
         "ים": ["summer", "reggae", "pop"],
         "טיול בטבע": ["folk", "acoustic", "indie"],
-        "קמפינג ומדורה": ["folk", "acoustic", "sing along"],
-        "חופשה בחו\"ל": ["summer", "latin", "pop"],
-        "בריכה": ["summer", "dance", "reggaeton"],
-    },
-    "רגשות": {
-        "פרידה": ["sad", "ballad", "breakup"],
-        "געגועים": ["ballad", "nostalgia", "acoustic"],
-        "נוסטלגיה": ["oldies", "80s", "90s"],
-        "מוטיבציה": ["motivation", "hip hop", "rock"],
     },
 }
 EVENT_HINTS = {event: terms for group in EVENT_GROUPS.values() for event, terms in group.items()}
@@ -105,6 +89,19 @@ WORLD_GENRES = [
     ("קאנטרי", "country"), ("מטאל", "metal"), ("K-Pop", "k-pop"), ("קלאסית", "classical"),
 ]
 HEBREW_GENRE_TERMS = {term for _, term in HEBREW_GENRES}
+# 10 הז'אנרים בטופס היצירה, כולם בעברית. הרשימות המלאות למעלה משמשות לשמות ז'אנרים בסטטיסטיקות
+GENRE_CHOICES = [
+    ("פופ ישראלי", "israeli pop"),
+    ("מזרחית וים תיכוני", "mizrahi"),
+    ("רוק ישראלי", "israeli rock"),
+    ("שירי ארץ ישראל", "israeli folk"),
+    ("היפ הופ וראפ", "hip hop"),
+    ("פופ בינלאומי", "pop"),
+    ("רוק ומטאל", "rock"),
+    ("דאנס ואלקטרוני", "dance"),
+    ("R&B וסול", "r&b"),
+    ("לטיני", "latin"),
+]
 
 
 def is_hebrew(text):

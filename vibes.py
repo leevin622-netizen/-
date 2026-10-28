@@ -22,8 +22,14 @@ NAMES = ("energy", "danceability", "valence", "acousticness", "instrumentalness"
 MOOD_PROFILES = {
     "שמח": {"valence": (0.55, None), "energy": (0.45, None)},
     "עצוב": {"valence": (None, 0.4), "energy": (None, 0.6)},
-    "ממריץ": {"energy": (0.7, None), "danceability": (0.5, None)},
+    "אנרגטי": {"energy": (0.7, None), "danceability": (0.5, None)},
     "רגוע": {"energy": (None, 0.5), "speechiness": (None, 0.2)},
+    "רומנטי": {"energy": (None, 0.65), "speechiness": (None, 0.15)},
+    "נוסטלגי": {},
+    "מוטיבציה": {"energy": (0.65, None)},
+    "שבור לב": {"valence": (None, 0.4)},
+    "בא לרקוד": {"energy": (0.65, None), "danceability": (0.65, None)},
+    "חולמני": {"energy": (None, 0.55), "speechiness": (None, 0.15)},
 }
 EVENT_PROFILES = {
     "ריצה": {"energy": (0.7, None), "danceability": (0.55, None)},
