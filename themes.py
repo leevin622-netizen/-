@@ -3,11 +3,11 @@ import random
 
 # ערכת עיצוב לכל סגנון: צבע מרכזי, צבע הטקסט עליו, ושלושה צבעים לרקע המשתנה
 THEMES = {
-    "pop": {"label": "פופ", "emoji": "💖", "accent": "#ff4fa3", "on_accent": "#fff",
+    "pop": {"label": "פופ", "emoji": "💖", "accent": "#ff4fa3", "on_accent": "#000",
             "colors": ("#ff4fa3", "#8b5cf6", "#ffb347")},
     "mizrahi": {"label": "מזרחית", "emoji": "🌙", "accent": "#f5b301", "on_accent": "#000",
                 "colors": ("#f5b301", "#d9480f", "#0ca5a5")},
-    "rock": {"label": "רוק", "emoji": "🎸", "accent": "#ff3b30", "on_accent": "#fff",
+    "rock": {"label": "רוק", "emoji": "🎸", "accent": "#ff3b30", "on_accent": "#000",
              "colors": ("#7f0000", "#ff3b30", "#262626")},
     "hiphop": {"label": "היפ הופ", "emoji": "🎤", "accent": "#ffb000", "on_accent": "#000",
                "colors": ("#ff6a00", "#ffd200", "#3a3a3a")},

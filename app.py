@@ -115,10 +115,12 @@ body {
   font-family: "Segoe UI", Arial, sans-serif; line-height: 1.5;
 }
 .wrap { max-width: 640px; margin: 0 auto; padding: 16px 16px 48px; }
-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-header a.logo { color: var(--text); text-decoration: none; font-size: 22px; font-weight: 700; }
+header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.brand { flex-wrap: wrap; }
+header a.logo { color: var(--text); text-decoration: none; font-size: 22px; font-weight: 700; white-space: nowrap; }
 header .user { color: var(--muted); font-size: 14px; }
-header .user a { color: var(--muted); margin-inline-start: 8px; }
+header .user a { color: var(--muted); margin-inline-start: 8px; display: inline-flex; align-items: center; min-height: 40px; }
 h1 { font-size: 24px; margin: 8px 0 16px; }
 a { color: var(--accent); }
 .menu { display: grid; gap: 12px; }
@@ -134,8 +136,9 @@ a { color: var(--accent); }
 }
 .vibe {
   display: inline-flex; gap: 6px; align-items: center; margin-bottom: 16px; padding: 6px 14px;
-  border-radius: 999px; background: var(--card); border: 1px solid var(--accent); font-size: 14px;
+  border-radius: 16px; background: var(--card); border: 1px solid var(--accent); font-size: 14px;
 }
+.vibe .note { flex-basis: 100%; }
 h1 { text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
 label.field { display: block; margin-bottom: 14px; color: var(--muted); font-size: 14px; }
 input[type=text], input[type=number], select {
@@ -159,7 +162,7 @@ label.check { display: flex; gap: 8px; align-items: center; margin-bottom: 14px;
 .list .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list .sub { color: var(--muted); font-size: 14px; }
 .list input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
-.note { color: var(--muted); font-size: 14px; }
+.note { color: #ececec; font-size: 14px; text-shadow: 0 1px 6px rgba(0, 0, 0, .45); }
 .success { background: #133d24; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 .wide { max-width: 1100px; }
 .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -200,10 +203,10 @@ h2 { font-size: 19px; margin: 22px 0 10px; text-shadow: 0 2px 12px rgba(0, 0, 0,
 }
 .moves { display: inline-flex; flex-direction: column; gap: 2px; flex: none; }
 .list .move, .list .play {
-  width: auto; padding: 2px 9px; font-size: 13px; line-height: 1.4; border-radius: 999px;
+  width: auto; min-width: 40px; min-height: 32px; padding: 2px 10px; font-size: 15px; line-height: 1.4; border-radius: 999px;
   background: var(--card-hover); color: var(--text); border: 1px solid var(--border); cursor: pointer;
 }
-.list .play { padding: 6px 10px; font-size: 14px; }
+.list .play { min-width: 44px; min-height: 44px; padding: 6px 10px; font-size: 16px; }
 .list .play.playing { background: var(--accent); color: var(--on-accent); }
 .bars { display: grid; gap: 8px; margin-bottom: 8px; }
 .bar-row { display: grid; grid-template-columns: minmax(90px, 150px) 1fr 44px; gap: 10px; align-items: center; font-size: 14px; }
@@ -289,7 +292,11 @@ PLAY_JS = """
   var player = new Audio(), playingButton = null;
   function stop() {
     player.pause();
-    if (playingButton) playingButton.classList.remove("playing");
+    if (playingButton) {
+      playingButton.classList.remove("playing");
+      playingButton.setAttribute("aria-pressed", "false");
+      playingButton.textContent = "▶";
+    }
     playingButton = null;
   }
   player.addEventListener("ended", stop);
@@ -301,6 +308,8 @@ PLAY_JS = """
     player.src = button.dataset.src;
     playingButton = button;
     button.classList.add("playing");
+    button.setAttribute("aria-pressed", "true");
+    button.textContent = "⏸";
     player.play().catch(stop);
   });
 })();
@@ -365,10 +374,15 @@ TABLE_JS = """
 document.querySelectorAll("table.sortable").forEach(function (table) {
   var body = table.tBodies[0];
   table.querySelectorAll("th[data-type]").forEach(function (th, col) {
+    th.tabIndex = 0;
+    th.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); th.click(); }
+    });
     th.addEventListener("click", function () {
       var desc = !th.classList.contains("desc");
-      table.querySelectorAll("th").forEach(function (h) { h.classList.remove("asc", "desc"); });
+      table.querySelectorAll("th").forEach(function (h) { h.classList.remove("asc", "desc"); h.removeAttribute("aria-sort"); });
       th.classList.add(desc ? "desc" : "asc");
+      th.setAttribute("aria-sort", desc ? "descending" : "ascending");
       var numeric = th.dataset.type === "num";
       var rows = Array.from(body.rows);
       rows.sort(function (a, b) {
@@ -590,11 +604,11 @@ def page(body, title="פלייליסטור", wide=False, script="", theme=None, 
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{escape(title)}</title><style>{STYLE}{themes.theme_css(theme)}</style></head><body>"
         + themes.background_html(images, theme)
-        + f'<div class="wrap{" wide" if wide else ""}">'
+        + f'<main class="wrap{" wide" if wide else ""}">'
         f'<header><div class="brand">{switch}<a class="logo" href="/">🎧 פלייליסטור</a></div>{user_html}</header>'
         + notices()
         + body
-        + "</div>"
+        + "</main>"
         + (f"<script>{script}</script>" if script else "")
         + "</body></html>"
     )
@@ -659,9 +673,11 @@ def spotify_link(text, kind, item_id, inner_html=None):
     content = inner_html or escape(text)
     if not item_id:
         return content
+    # קישור שיש בו רק תמונה, למשל עטיפת אלבום, צריך שם שהקורא מסך יכול להקריא
+    name = "" if text else ' aria-label="פתיחה בספוטיפיי"'
     return (
         f'<a class="sp" href="https://open.spotify.com/{kind}/{escape(item_id)}"'
-        f' target="_blank" rel="noopener">{content}</a>'
+        f' target="_blank" rel="noopener"{name}>{content}</a>'
     )
 
 
@@ -707,7 +723,8 @@ def preview_links(tracks):
 
 def track_row(track, checkbox=False, feat=None, preview=""):
     check = (
-        f'<input type="checkbox" name="uri" value="{escape(track["uri"])}" checked>' if checkbox else ""
+        f'<input type="checkbox" name="uri" value="{escape(track["uri"])}" '
+        f'aria-label="לכלול את {escape(track["name"])}" checked>' if checkbox else ""
     )
     # הנתונים מאפשרים מיון בדף, והתיאור מוצג ליד שם האמן
     sort_data = {
@@ -720,7 +737,7 @@ def track_row(track, checkbox=False, feat=None, preview=""):
         attrs += f' data-bpm="{feat.get("tempo") or 0}" data-energy="{feat.get("energy") or 0}" data-valence="{feat.get("valence") or 0}"'
         info = describe(feat)
     play = (
-        f'<button type="button" class="play" data-src="{escape(preview)}" '
+        f'<button type="button" class="play" data-src="{escape(preview)}" aria-pressed="false" '
         'aria-label="השמעת 30 השניות הראשונות של השיר">▶</button>'
     ) if preview else ""
     moves = (
@@ -993,7 +1010,7 @@ def home():
     return page(
         "<h1>מה נשמע היום?</h1>"
         f'<div class="vibe">{vibe["emoji"]} החוויה שלך: {escape(vibe["label"])}'
-        f'<span class="note">· לפי מה שנשמע הכי הרבה: {escape(auto["label"])}</span></div>'
+        f'<span class="note">לפי מה שנשמע הכי הרבה: {escape(auto["label"])}</span></div>'
         + '<div class="menu">'
         + onboarding_card
         + '<a href="/build">✨ צור פלייליסט חדש<small>לפי ז\'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a>'
