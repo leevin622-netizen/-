@@ -324,11 +324,48 @@ def find_tracks(sp, genre, mood, event, language, count, personal=False, ranges=
     per_term = max(PAGE_SIZE, -(-wanted * 2 // len(terms)))
     # המונחים נאספים במקביל, כך שבקשה לכמה ז'אנרים לא מחכה לכל אחד בתורו
     with ThreadPoolExecutor(max_workers=TERM_WORKERS) as pool:
-        pools = list(pool.map(lambda term: collect_for_term(sp, term, language, per_term, years), terms))
-    pools = filter_by_vibe(pools, mood, event, wanted, ranges)
-    results += pick(pools, wanted, seen)
+        raw = list(pool.map(lambda term: collect_for_term(sp, term, language, per_term, years), terms))
+    # filter_by_vibe מחזיר רשימות חדשות, כך שהשירים שלא עברו את הסינון נשארים ב-raw להשלמה
+    results += pick(filter_by_vibe([list(p) for p in raw], mood, event, wanted, ranges), wanted, seen)
+    results += top_up(sp, raw, terms, language, years, count - len(results), seen)
     random.shuffle(results)
     return separate_artists(results)
+
+
+# כמה סבבי השלמה לכל היותר, כשאין מספיק שירים. כל סבב מבקש פי שניים ממה שחסר
+TOP_UP_ROUNDS = 2
+
+
+def top_up(sp, raw, terms, language, years, missing, seen):
+    """
+    משלים שירים כשנמצאו פחות ממה שביקשת. קודם שירים מאותם מונחים שלא התאימו בדיוק לאווירה,
+    אחר כך חיפוש ישיר בספוטיפיי (בלי האינדקס המקומי, שבו לפעמים יש מעט שירים למונח),
+    ובסוף מונח כללי לפי השפה. הז'אנר, השפה והשנים תמיד נשמרים.
+    """
+    found = []
+    if missing > 0:
+        found += pick(raw, missing, seen)
+    broad = ["israeli"] if language == "עברית" else ["pop"]
+    for _ in range(TOP_UP_ROUNDS):
+        need = missing - len(found)
+        if need <= 0:
+            break
+        search_terms = terms + [t for t in broad if t not in terms]
+        per_term = max(PAGE_SIZE, -(-need * 2 // len(search_terms)))
+
+        def search(term):
+            try:
+                return search_term(sp, term, language, per_term + len(seen), years)
+            except (SpotifyException, requests.RequestException) as error:
+                print(f"[פלייליסטור] השלמה דילגה על {term}: {error}")
+                return []
+        with ThreadPoolExecutor(max_workers=TERM_WORKERS) as pool:
+            pools = list(pool.map(search, search_terms))
+        added = pick(pools, need, seen)
+        if not added:
+            break
+        found += added
+    return found
 
 
 def matches(term, tags):
@@ -374,9 +411,14 @@ def find_liked_tracks(saved, artist_tags, genre, mood, event, language, count, r
             continue
         score = sum(matches(term, tags) for term in extra_terms) + random.random()
         scored.append((score, track))
-    scored = filter_liked_by_vibe(scored, mood, event, ranges)
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    results = [to_result(track) for _, track in scored[:count]]
+    fitting = filter_liked_by_vibe(scored, mood, event, ranges)
+    fitting.sort(key=lambda pair: pair[0], reverse=True)
+    if len(fitting) < count:
+        # לא מספיק שירים שמתאימים בדיוק לאווירה: משלימים מהשאר שמתאימים לז'אנר, לשפה ולשנים
+        chosen = {track["uri"] for _, track in fitting}
+        rest = sorted((pair for pair in scored if pair[1]["uri"] not in chosen), key=lambda pair: pair[0], reverse=True)
+        fitting += rest
+    results = [to_result(track) for _, track in fitting[:count]]
     random.shuffle(results)
     return separate_artists(results)
 

@@ -18,7 +18,6 @@ import json
 from urllib.parse import urlencode, urlsplit
 from playlist_names import suggest_names
 from previews import preview_url
-from concurrent.futures import ThreadPoolExecutor
 from engine import (
     GENRE_HINTS, EVENT_HINTS, EVENT_GROUPS, LANGUAGES, HEBREW_GENRES, WORLD_GENRES, GENRE_CHOICES,
     find_tracks, find_liked_tracks, create_playlist, to_result, album_year, PLAYLIST_DESCRIPTION,
@@ -248,6 +247,28 @@ textarea.copy {
   width: 100%; min-height: 200px; margin: 0 0 12px; padding: 12px 14px; font-size: 15px; line-height: 1.7; font-family: inherit;
   background: var(--field); color: var(--text); border: 1px solid var(--border); border-radius: 12px; resize: vertical;
 }
+.list.numbered { counter-reset: song; }
+.list.numbered li { counter-increment: song; }
+.list.numbered li::before {
+  content: counter(song); flex: none; min-width: 2.2ch; text-align: center;
+  color: var(--soft); font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums;
+}
+table.numbered tbody { counter-reset: row; }
+table.numbered tbody tr { counter-increment: row; }
+table.numbered tbody td:first-child::before {
+  content: counter(row); display: inline-block; min-width: 3.2ch; margin-inline-end: 6px;
+  color: var(--soft); font-weight: 600; font-variant-numeric: tabular-nums; vertical-align: middle;
+}
+.sp-bar {
+  position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
+  width: min(560px, calc(100% - 24px)); background: #181920; border: 1px solid var(--border);
+  border-radius: 16px; padding: 8px; box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
+}
+.sp-bar iframe { display: block; width: 100%; height: 80px; border: 0; border-radius: 12px; }
+.sp-bar .sp-close {
+  position: absolute; top: -12px; inset-inline-start: -12px; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--card-hover); color: var(--text); border: 1px solid var(--border); cursor: pointer;
+}
 """ + themes.BACKGROUND_CSS
 
 # מיון טבלה בלחיצה על כותרת, וסינון לפי טקסט חופשי
@@ -313,42 +334,25 @@ SORT_JS = """
 })();
 """
 
-# השמעה של קטע של 30 שניות. נטען מ-Deezer רק כשלוחצים, וקטע אחד מתנגן בכל פעם
-# השמעת 30 השניות הראשונות. הכתובת כבר בשורה של השיר, אז אין בקשה נוספת בלחיצה
-PLAY_JS = """
-(function () {
-  var list = document.getElementById("playlist");
-  if (!list) return;
-  var player = new Audio(), playingButton = null;
-  function stop() {
-    player.pause();
-    if (playingButton) {
-      playingButton.classList.remove("playing");
-      playingButton.setAttribute("aria-pressed", "false");
-      playingButton.textContent = "▶";
-    }
-    playingButton = null;
-  }
-  player.addEventListener("ended", stop);
-  list.addEventListener("click", function (event) {
-    var button = event.target.closest(".play");
-    if (!button) return;
-    if (playingButton === button) { stop(); return; }
-    stop();
-    player.src = button.dataset.src;
-    playingButton = button;
-    button.classList.add("playing");
-    button.setAttribute("aria-pressed", "true");
-    button.textContent = "⏸";
-    player.play().catch(stop);
-  });
-})();
-"""
-
-# כפתור ▶ בטבלת השירים שאהבת. הכתובת נטענת מהשרת רק בלחיצה, כי יש מאות שירים בטבלה
+# כפתור ▶ לכל שיר, בתצוגה המקדימה ובטבלת השירים שאהבת. הכתובת נטענת מהשרת רק בלחיצה.
+# אם אין קטע ב-Deezer או ב-iTunes, נפתח בתחתית המסך נגן ספוטיפיי של השיר, שעובד לכל שיר
 LAZY_PLAY_JS = """
 (function () {
-  var player = new Audio(), playingButton = null;
+  var player = new Audio(), playingButton = null, bar = null;
+  function spotifyBar(id) {
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.className = "sp-bar";
+      bar.innerHTML = '<button type="button" class="sp-close" aria-label="סגירת הנגן">✕</button><iframe title="נגן ספוטיפיי" allow="autoplay; encrypted-media"></iframe>';
+      bar.querySelector(".sp-close").addEventListener("click", function () {
+        bar.hidden = true;
+        bar.querySelector("iframe").src = "about:blank";
+      });
+      document.body.appendChild(bar);
+    }
+    bar.hidden = false;
+    bar.querySelector("iframe").src = "https://open.spotify.com/embed/track/" + encodeURIComponent(id) + "?utm_source=generator&theme=0";
+  }
   function stop() {
     player.pause();
     if (playingButton) {
@@ -369,22 +373,25 @@ LAZY_PLAY_JS = """
   }
   player.addEventListener("ended", stop);
   document.addEventListener("click", function (event) {
-    var button = event.target.closest("td .play");
-    if (!button || button.classList.contains("none") || button.classList.contains("loading")) return;
+    var button = event.target.closest(".play[data-title]");
+    if (!button || button.classList.contains("loading")) return;
     if (playingButton === button) { stop(); return; }
-    if (button.dataset.src) { start(button, button.dataset.src); return; }
+    if (button.dataset.found) { start(button, button.dataset.found); return; }
+    if (button.dataset.missing) { stop(); spotifyBar(button.dataset.id); return; }
     button.classList.add("loading");
     var query = new URLSearchParams({ artist: button.dataset.artist, title: button.dataset.title });
     fetch("/preview?" + query).then(function (r) { return r.json(); }).then(function (data) {
       button.classList.remove("loading");
       if (!data.url) {
+        button.dataset.missing = "1";
+        if (button.dataset.id) { stop(); spotifyBar(button.dataset.id); return; }
         button.classList.add("none");
         button.textContent = "–";
         button.title = "לא נמצא קטע לשיר הזה";
         button.setAttribute("aria-label", "לא נמצא קטע לשיר הזה");
         return;
       }
-      button.dataset.src = data.url;
+      button.dataset.found = data.url;
       start(button, data.url);
     }).catch(function () { button.classList.remove("loading"); });
   });
@@ -805,20 +812,17 @@ def format_rank(rank):
     return f"#{rank[0]} · {rank[1]}" if rank else ""
 
 
-PREVIEW_WORKERS = 8
+def play_button(track):
+    """כפתור ▶ שטוען קטע רק בלחיצה (ראו LAZY_PLAY_JS)."""
+    first_artist = track["artists"][0][1] if track.get("artists") else track.get("artist", "")
+    return (
+        f'<button type="button" class="play" data-artist="{escape(first_artist)}" '
+        f'data-title="{escape(track["name"])}" data-id="{escape(track.get("id") or "")}" aria-pressed="false" '
+        f'aria-label="השמעת קטע מ{escape(track["name"])}">▶</button>'
+    )
 
 
-def preview_links(tracks):
-    """כתובת הקטע של כל שיר שיש לו קטע, לפי uri. שיר בלי קטע לא מקבל כפתור ▶."""
-    def lookup(track):
-        first_artist = track["artists"][0][1] if track.get("artists") else track["artist"]
-        return track["uri"], preview_url(first_artist, track["name"])
-
-    with ThreadPoolExecutor(max_workers=PREVIEW_WORKERS) as pool:
-        return {uri: url for uri, url in pool.map(lookup, tracks) if url}
-
-
-def track_row(track, checkbox=False, feat=None, preview=""):
+def track_row(track, checkbox=False, feat=None):
     check = (
         f'<input type="checkbox" name="uri" value="{escape(track["uri"])}" '
         f'aria-label="לכלול את {escape(track["name"])}" checked>' if checkbox else ""
@@ -833,10 +837,6 @@ def track_row(track, checkbox=False, feat=None, preview=""):
     if feat:
         attrs += f' data-bpm="{feat.get("tempo") or 0}" data-energy="{feat.get("energy") or 0}" data-valence="{feat.get("valence") or 0}"'
         info = describe(feat)
-    play = (
-        f'<button type="button" class="play" data-src="{escape(preview)}" aria-pressed="false" '
-        'aria-label="השמעת 30 השניות הראשונות של השיר">▶</button>'
-    ) if preview else ""
     moves = (
         '<span class="moves">'
         '<button type="button" class="move" data-dir="-1" aria-label="העברה למעלה">▲</button>'
@@ -846,7 +846,7 @@ def track_row(track, checkbox=False, feat=None, preview=""):
         f"<li{attrs}>{check}{spotify_link('', 'album', track.get('album_id'), cover(track.get('image', '')))}"
         f"<div class=\"info\"><div class=\"title\">{spotify_link(track['name'], 'track', track.get('id'))}</div>"
         f"<div class=\"sub\">{artist_links(track)}{(' · ' + escape(info)) if info else ''}</div></div>"
-        f"{play}{moves}</li>"
+        f"{play_button(track)}{moves}</li>"
     )
 
 
@@ -1214,12 +1214,10 @@ def saved_tracks():
                ("נוסף", "text"), ("אורך", "num"), ("דירוג", "num")]
     rows = []
     for t in tracks:
-        first_artist = t["artists"][0][1] if t["artists"] else t["artist"]
         added = t["added"]
         row = (
             f'<td><input type="checkbox" name="uri" value="{escape(t["uri"])}" aria-label="לסמן את {escape(t["name"])}"></td>'
-            f'<td><button type="button" class="play" data-artist="{escape(first_artist)}" data-title="{escape(t["name"])}" '
-            f'aria-pressed="false" aria-label="השמעת קטע מ{escape(t["name"])}">▶</button></td>'
+            f"<td>{play_button(t)}</td>"
             f"<td>{spotify_link('', 'album', t['album_id'], cover(t['image']))}</td>"
             + cell(t["name"], cls="name", html=spotify_link(t["name"], "track", t["id"]))
             + cell(t["artist"], cls="short", html=artist_links(t))
@@ -1235,7 +1233,7 @@ def saved_tracks():
     artists_count = len({a for t in tracks for a, _ in t["artists"]})
     total_hours = sum(t["duration"] for t in tracks) / 3_600_000
     note = (
-        '<p class="note">לחיצה על ▶ משמיעה קטע של 30 שניות. "דירוג" הוא המקום של השיר '
+        '<p class="note">לחיצה על ▶ משמיעה קטע מהשיר (ואם אין, נפתח נגן ספוטיפיי בתחתית). "דירוג" הוא המקום של השיר '
         "ב-50 השירים שאתם הכי שומעים (ב-4 השבועות האחרונים, ב-6 החודשים האחרונים, או בכל הזמנים).</p>"
     )
     return page(
@@ -1252,7 +1250,7 @@ def saved_tracks():
         + "</div>"
         + '<p class="note">טיפ: חפשו אמן או אלבום, לחצו "סמן את כל המוצגים", ואז "צור פלייליסט". '
         + 'לפלייליסט לפי ז\'אנר או מצב רוח מתוך השירים שאהבתם, השתמשו ב<a href="/build">יצירת פלייליסט</a>.</p>'
-        + f'<div class="table-wrap"><table id="tracks" class="sortable"><thead>{header(columns)}</thead>'
+        + f'<div class="table-wrap"><table id="tracks" class="sortable numbered"><thead>{header(columns)}</thead>'
         + f'<tbody>{"".join(rows)}</tbody></table></div>'
         + "</form>",
         title="כל השירים שאהבתי", wide=True, script=TABLE_JS + LAZY_PLAY_JS,
@@ -1309,7 +1307,7 @@ def my_artists():
             ("אני עוקב אחריהם", sum(a["followed"] for a in artists)),
         ])
         + '<input type="text" class="search" data-table="artists" placeholder="חיפוש אמן או ז\'אנר...">'
-        + f'<div class="table-wrap"><table id="artists" class="sortable"><thead>{header(columns)}</thead>'
+        + f'<div class="table-wrap"><table id="artists" class="sortable numbered"><thead>{header(columns)}</thead>'
         + f'<tbody>{"".join(rows)}</tbody></table></div>',
         title="כל האמנים שאני אוהב", wide=True, script=TABLE_JS,
     )
@@ -1798,7 +1796,7 @@ def build():
         return page('<p>לא נמצאו שירים. <a href="/build">נסו שילוב אחר</a>.</p>')
     token = remember_preview(user_id(sp), criteria, tracks)
     names = names_for(criteria)
-    return render_preview(tracks, token, criteria, names[0], names)
+    return render_preview(tracks, token, criteria, names[0], names, requested=criteria["count"])
 
 
 def read_criteria():
@@ -1895,19 +1893,24 @@ def preview_for(token):
     return preview
 
 
-def render_preview(tracks, token, criteria, title, names):
+def render_preview(tracks, token, criteria, title, names, requested=None):
     feats = get_features([t["id"] for t in tracks if t.get("id")])
-    links = preview_links(tracks)
-    rows = "".join(
-        track_row(t, checkbox=True, feat=feats.get(t.get("id")), preview=links.get(t["uri"], ""))
-        for t in tracks
-    )
+    rows = "".join(track_row(t, checkbox=True, feat=feats.get(t.get("id"))) for t in tracks)
+    short = ""
+    if requested and len(tracks) < requested:
+        short = (
+            f'<div class="warn">ביקשתם {requested} שירים, ומצאנו {len(tracks)} שמתאימים לבחירות שלכם. '
+            "השלמנו כמה שאפשר בלי לצאת מהז'אנר, מהשפה ומהעשורים שבחרתם. "
+            "כדי לקבל יותר, אפשר לבחור פחות הגבלות (למשל בלי עשור, או שפה \"ביחד\").</div>"
+        )
     theme = themes.theme_for_choice(criteria["genre"], criteria["mood"], criteria["event"])
     covers = list(dict.fromkeys(t["image"] for t in tracks if t["image"]))[:BACKGROUND_IMAGES]
     return page(
         f"<h1>{len(tracks)} שירים בשבילך</h1>"
+        + short
+        + 
         '<p class="note">בטלו את הסימון בשירים שלא מתאימים, העבירו שירים למעלה ולמטה, ואז שמרו. '
-        "לחיצה על ▶ משמיעה את 30 השניות הראשונות, והכפתור מופיע רק בשירים שיש להם קטע. "
+        "לחיצה על ▶ משמיעה קטע מהשיר. אם אין קטע קצר, נפתח נגן ספוטיפיי של השיר בתחתית המסך. "
         "לחיצה על שם השיר פותחת אותו בספוטיפיי.</p>"
         '<form method="post" action="/save">'
         f'<input type="hidden" name="csrf" value="{csrf_token()}">'
@@ -1925,14 +1928,14 @@ def render_preview(tracks, token, criteria, title, names):
         '<option value="bpm">קצב (BPM)</option><option value="energy">אנרגיה</option>'
         '<option value="valence">שמחה</option></select></label>'
         '<button type="button" class="btn secondary" id="shuffle">🔀 ערבב</button></div>'
-        f'<ul class="list" id="playlist">{rows}</ul><br>'
+        f'<ul class="list numbered" id="playlist">{rows}</ul><br>'
         '<div class="toolbar">'
         '<button class="btn" type="submit">שמור בספוטיפיי</button>'
         f'<button class="btn secondary" type="submit" formaction="/build/more">➕ הוסף עוד {EXTRA_TRACKS} שירים</button>'
         "</div>"
         "</form>"
         '<p><a href="/build">התחלה מחדש</a></p>',
-        theme=theme, images=covers or None, script=NAME_JS + SORT_JS + PLAY_JS,
+        theme=theme, images=covers or None, script=NAME_JS + SORT_JS + LAZY_PLAY_JS,
     )
 
 
