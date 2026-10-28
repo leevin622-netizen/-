@@ -13,6 +13,7 @@ from lastfm import get_tags_for_artists
 import library
 import ratelimit
 import themes
+from i18n import _, LANGS, lang, text_dir, translate_js
 import favourites
 import json
 from urllib.parse import urlencode, urlsplit
@@ -53,7 +54,7 @@ def check_csrf():
         expected and secrets.compare_digest(given.encode(), expected.encode())
     ):
         return (
-            '<!doctype html><meta charset="utf-8"><p dir="rtl">הטופס פג תוקף. רעננו את העמוד ונסו שוב.</p>',
+            _('<!doctype html><meta charset="utf-8"><p dir="rtl">הטופס פג תוקף. רעננו את העמוד ונסו שוב.</p>'),
             400,
         )
 
@@ -75,7 +76,7 @@ def check_rate_limit():
     bucket, limit, window = RATE_LIMITS.get((request.method, request.path), DEFAULT_LIMIT)
     if not ratelimit.allow(bucket, ip, limit, window):
         return (
-            '<!doctype html><meta charset="utf-8"><p dir="rtl">יותר מדי בקשות מהמכשיר הזה. נסו שוב בעוד כמה דקות.</p>',
+            _('<!doctype html><meta charset="utf-8"><p dir="rtl">יותר מדי בקשות מהמכשיר הזה. נסו שוב בעוד כמה דקות.</p>'),
             429,
         )
 
@@ -247,6 +248,14 @@ textarea.copy {
   width: 100%; min-height: 200px; margin: 0 0 12px; padding: 12px 14px; font-size: 15px; line-height: 1.7; font-family: inherit;
   background: var(--field); color: var(--text); border: 1px solid var(--border); border-radius: 12px; resize: vertical;
 }
+.langs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 18px; }
+.langs-label { font-size: 18px; margin-inline-end: 2px; }
+.chip {
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--card);
+  color: var(--text); font-size: 15px; font-family: inherit; cursor: pointer;
+}
+.chip:hover { border-color: var(--accent); }
+.chip.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
 .list.numbered { counter-reset: song; }
 .list.numbered li { counter-increment: song; }
 .list.numbered li::before {
@@ -572,7 +581,7 @@ def image_url(images):
 def load_vibe(sp, uid):
     """הסגנון של המשתמש ותמונות לרקע, לפי האמנים והשירים שהוא הכי שומע."""
     artist_ranks, artist_objects = library.cached(uid, "top_artists", lambda: library.top_ranks(sp, "artists"))
-    _, track_objects = library.cached(uid, "top_tracks", lambda: library.top_ranks(sp, "tracks"))
+    _ranks, track_objects = library.cached(uid, "top_tracks", lambda: library.top_ranks(sp, "tracks"))
     artists = sorted(artist_objects.values(), key=lambda a: min(artist_ranks[a["id"]].values()))[:40]
     # ז'אנרים מספוטיפיי, ואם אין, תגיות מ-Last.fm
     no_genres = [a for a in artists if not a.get("genres")]
@@ -696,7 +705,7 @@ def login_images():
     return images
 
 
-def page(body, title="פלייליסטור", wide=False, script="", theme=None, images=None):
+def page(body, title=None, wide=False, script="", theme=None, images=None):
     # כשספוטיפיי מוגבל, לא מבקשים ממנו עוד נתונים בשביל העיצוב
     limited = time.time() < _limit["until"]
     vibe = {"theme": "default", "images": []} if limited else current_vibe()
@@ -704,28 +713,58 @@ def page(body, title="פלייליסטור", wide=False, script="", theme=None, 
     images = vibe["images"] if images is None else images
     user = session.get("user_name")
     user_html = (
-        f'<span class="user">{escape(user)}<a href="/logout">התנתקות</a></span>' if user else ""
+        _("<span class=\"user\">{a0}<a href=\"/logout\">התנתקות</a></span>", a0=escape(user)) if user else ""
     )
     switch = vibe_switch() if session.get("token_info") else ""
+    title = title or _("פלייליסטור")
     return (
-        '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">'
+        f'<!doctype html><html lang="{lang()}" dir="{text_dir()}"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{escape(title)}</title><style>{STYLE}{themes.theme_css(theme)}</style></head><body>"
         + themes.background_html(images, theme)
-        + f'<main class="wrap{" wide" if wide else ""}">'
-        f'<header><div class="brand">{switch}<a class="logo" href="/">🎧 פלייליסטור</a></div>{user_html}</header>'
+        + _("<main class=\"wrap{a0}\"><header><div class=\"brand\">{a1}<a class=\"logo\" href=\"/\">🎧 פלייליסטור</a></div>{a2}</header>", a0=" wide" if wide else "", a1=switch, a2=lang_switch() + user_html)
         + notices()
         + body
         + "</main>"
-        + (f"<script>{script}</script>" if script else "")
+        + (f"<script>{translate_js(script)}</script>" if script else "")
         + "</body></html>"
     )
 
 
 def options(values, selected=""):
+    """אפשרויות לתפריט. הערך נשאר בעברית (כך הוא מוכר בשרת), והתווית בשפת הממשק."""
     return "".join(
-        f'<option value="{escape(v)}"{" selected" if v == selected else ""}>{escape(v)}</option>'
+        f'<option value="{escape(v)}"{" selected" if v == selected else ""}>{escape(_(v))}</option>'
         for v in values
+    )
+
+
+def lang_switch():
+    """בחירת שפה קטנה בכותרת העליונה, בכל המסכים."""
+    choices = "".join(
+        f'<option value="{code}"{" selected" if code == lang() else ""}>{escape(name)}</option>'
+        for code, name, _dir in LANGS
+    )
+    return (
+        '<form method="post" action="/lang" class="vibe-switch">'
+        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
+        f'<input type="hidden" name="back" value="{escape(request.full_path)}">'
+        f'<select name="lang" aria-label="Language" onchange="this.form.submit()">{choices}</select>'
+        '<noscript><button class="btn" type="submit">OK</button></noscript></form>'
+    )
+
+
+def lang_picker():
+    """בחירת שפה בולטת בדף הבית: כפתור לכל שפה."""
+    buttons = "".join(
+        f'<button class="chip{" on" if code == lang() else ""}" type="submit" name="lang" value="{code}"'
+        f'{" aria-pressed=\"true\"" if code == lang() else ""}>{escape(name)}</button>'
+        for code, name, _dir in LANGS
+    )
+    return (
+        '<form method="post" action="/lang" class="langs">'
+        f'<input type="hidden" name="csrf" value="{csrf_token()}"><input type="hidden" name="back" value="/">'
+        f'<span class="langs-label">🌐</span>{buttons}</form>'
     )
 
 
@@ -734,8 +773,8 @@ def cover(url):
 
 
 def genre_options():
-    return '<option value="">ללא</option>' + "".join(
-        f'<option value="{escape(term)}">{escape(name)}</option>' for name, term in GENRE_CHOICES
+    return _('<option value="">ללא</option>') + "".join(
+        f'<option value="{escape(term)}">{escape(_(name))}</option>' for name, term in GENRE_CHOICES
     )
 
 
@@ -745,7 +784,7 @@ GENRE_NAMES = {term: name for name, term in HEBREW_GENRES + WORLD_GENRES + GENRE
 def liked_artist_tags(sp, uid, saved):
     """ז'אנרים ותגיות לכל אמן ברשימת השירים שאהבת, כדי לבנות ממנה פלייליסט לפי ז'אנר."""
     def load():
-        _, top_objects = library.cached(uid, "top_artists", lambda: library.top_ranks(sp, "artists"))
+        _ranks, top_objects = library.cached(uid, "top_artists", lambda: library.top_ranks(sp, "artists"))
         followed = library.cached(uid, "followed", lambda: library.followed_artists(sp))
         genres = {a["id"]: a.get("genres") or [] for a in list(followed) + list(top_objects.values())}
         names = {a["id"]: a["name"] for item in saved for a in item["track"]["artists"] if a.get("id")}
@@ -778,7 +817,7 @@ def spotify_link(text, kind, item_id, inner_html=None):
     if not item_id:
         return content
     # קישור שיש בו רק תמונה, למשל עטיפת אלבום, צריך שם שהקורא מסך יכול להקריא
-    name = "" if text else ' aria-label="פתיחה בספוטיפיי"'
+    name = "" if text else _(' aria-label="פתיחה בספוטיפיי"')
     return (
         f'<a class="sp" href="https://open.spotify.com/{kind}/{escape(item_id)}"'
         f' target="_blank" rel="noopener"{name}>{content}</a>'
@@ -809,23 +848,20 @@ def format_duration(ms):
 
 
 def format_rank(rank):
-    return f"#{rank[0]} · {rank[1]}" if rank else ""
+    return f"#{rank[0]} · {_(rank[1])}" if rank else ""
 
 
 def play_button(track):
     """כפתור ▶ שטוען קטע רק בלחיצה (ראו LAZY_PLAY_JS)."""
     first_artist = track["artists"][0][1] if track.get("artists") else track.get("artist", "")
     return (
-        f'<button type="button" class="play" data-artist="{escape(first_artist)}" '
-        f'data-title="{escape(track["name"])}" data-id="{escape(track.get("id") or "")}" aria-pressed="false" '
-        f'aria-label="השמעת קטע מ{escape(track["name"])}">▶</button>'
+        _("<button type=\"button\" class=\"play\" data-artist=\"{a0}\" data-title=\"{a1}\" data-id=\"{a2}\" aria-pressed=\"false\" aria-label=\"השמעת קטע מ{a3}\">▶</button>", a0=escape(first_artist), a1=escape(track["name"]), a2=escape(track.get("id") or ""), a3=escape(track["name"]))
     )
 
 
 def track_row(track, checkbox=False, feat=None):
     check = (
-        f'<input type="checkbox" name="uri" value="{escape(track["uri"])}" '
-        f'aria-label="לכלול את {escape(track["name"])}" checked>' if checkbox else ""
+        _("<input type=\"checkbox\" name=\"uri\" value=\"{a0}\" aria-label=\"לכלול את {a1}\" checked>", a0=escape(track["uri"]), a1=escape(track["name"])) if checkbox else ""
     )
     # הנתונים מאפשרים מיון בדף, והתיאור מוצג ליד שם האמן
     sort_data = {
@@ -838,9 +874,9 @@ def track_row(track, checkbox=False, feat=None):
         attrs += f' data-bpm="{feat.get("tempo") or 0}" data-energy="{feat.get("energy") or 0}" data-valence="{feat.get("valence") or 0}"'
         info = describe(feat)
     moves = (
-        '<span class="moves">'
+        _('<span class="moves">'
         '<button type="button" class="move" data-dir="-1" aria-label="העברה למעלה">▲</button>'
-        '<button type="button" class="move" data-dir="1" aria-label="העברה למטה">▼</button></span>'
+        '<button type="button" class="move" data-dir="1" aria-label="העברה למטה">▼</button></span>')
     )
     return (
         f"<li{attrs}>{check}{spotify_link('', 'album', track.get('album_id'), cover(track.get('image', '')))}"
@@ -890,13 +926,12 @@ def notices():
     if time.time() < _limit["until"]:
         until = clock(_limit["until"])
         notes.append(
-            f"ספוטיפיי הגביל את הבקשות לזמן מה. אפשר לנסות שוב אחרי {until}. "
-            "עד אז מוצגים הנתונים שנשמרו בפעם האחרונה, כשיש כאלה."
+            _("ספוטיפיי הגביל את הבקשות לזמן מה. אפשר לנסות שוב אחרי {a0}. עד אז מוצגים הנתונים שנשמרו בפעם האחרונה, כשיש כאלה.", a0=until)
         )
     since = getattr(g, "stale_since", None) if has_request_context() else None
     if since is not None:
         when = clock(since)
-        notes.append(f"חלק מהנתונים מ-{when}, כי ספוטיפיי לא ענה. הם יתעדכנו כשהוא יחזור.")
+        notes.append(_("חלק מהנתונים מ-{a0}, כי ספוטיפיי לא ענה. הם יתעדכנו כשהוא יחזור.", a0=when))
     return "".join(f'<div class="warn">{escape(note)}</div>' for note in notes)
 
 
@@ -908,29 +943,35 @@ def spotify_error(error):
     if error.http_status == 429:
         remember_limit(error)
         # ההודעה עם השעה מופיעה מעל העמוד (notices), כאן רק מה שקרה
-        return page("<p>לא הצלחנו לטעון את העמוד כרגע. אפשר לחזור לדף הבית ולנסות שוב אחרי ההמתנה.</p>"), 429
-    return page("<p>ספוטיפיי החזיר שגיאה. נסו שוב בעוד כמה רגעים.</p>"), 502
+        return page(_("<p>לא הצלחנו לטעון את העמוד כרגע. אפשר לחזור לדף הבית ולנסות שוב אחרי ההמתנה.</p>")), 429
+    return page(_("<p>ספוטיפיי החזיר שגיאה. נסו שוב בעוד כמה רגעים.</p>")), 502
 
 
 @app.errorhandler(requests.RequestException)
 def network_error(error):
-    return page("<p>אין חיבור לספוטיפיי כרגע. בדקו את החיבור לאינטרנט ונסו שוב.</p>"), 503
+    return page(_("<p>אין חיבור לספוטיפיי כרגע. בדקו את החיבור לאינטרנט ונסו שוב.</p>")), 503
 
 
 def vibe_switch():
     """בחירת העיצוב, קטנה, בפינה הימנית למעלה בכל המסכים. ברירת המחדל אוטומטית, והבחירה משנה הכול."""
     chosen = session.get("vibe_choice", "")
-    options = '<option value="">אוטומטי</option>' + "".join(
-        f'<option value="{key}"{" selected" if key == chosen else ""}>{t["emoji"]} {t["label"]}</option>'
+    options = _('<option value="">אוטומטי</option>') + "".join(
+        f'<option value="{key}"{" selected" if key == chosen else ""}>{t["emoji"]} {escape(_(t["label"]))}</option>'
         for key, t in themes.THEMES.items()
     )
     return (
-        '<form method="post" action="/vibe" class="vibe-switch">'
-        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
-        f'<input type="hidden" name="back" value="{escape(request.full_path)}">'
-        f'<select name="vibe" aria-label="בחרו עיצוב" onchange="this.form.submit()">{options}</select>'
-        '<noscript><button class="btn" type="submit">החל</button></noscript></form>'
+        _("<form method=\"post\" action=\"/vibe\" class=\"vibe-switch\"><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><input type=\"hidden\" name=\"back\" value=\"{a1}\"><select name=\"vibe\" aria-label=\"בחרו עיצוב\" onchange=\"this.form.submit()\">{a2}</select><noscript><button class=\"btn\" type=\"submit\">החל</button></noscript></form>", a0=csrf_token(), a1=escape(request.full_path), a2=options)
     )
+
+
+@app.route("/lang", methods=["POST"])
+def set_lang():
+    code = request.form.get("lang", "he")
+    session["lang"] = code if code in {c for c, _n, _d in LANGS} else "he"
+    back = request.form.get("back", "/")
+    if not (back.startswith("/") and back[1:2] not in ("/", "\\") and back.isprintable()):
+        back = "/"
+    return redirect(back)
 
 
 @app.route("/vibe", methods=["POST"])
@@ -973,13 +1014,13 @@ def pick_form(action, item_id, q, label):
 
 def artist_rows(artists, followed, q):
     if not artists:
-        return '<p class="note">אין תוצאות להצגה.</p>'
+        return _('<p class="note">אין תוצאות להצגה.</p>')
     rows = []
     for artist in artists:
         if artist["id"] in followed:
-            action = '<span class="note">✓ עוקב</span>'
+            action = _('<span class="note">✓ עוקב</span>')
         else:
-            action = pick_form("/favourites/artist", artist["id"], q, "➕ עקוב")
+            action = pick_form("/favourites/artist", artist["id"], q, _("➕ עקוב"))
         rows.append(
             f"<li>{cover(artist['image'])}"
             f'<div class="info"><div class="title">{spotify_link(artist["name"], "artist", artist["id"])}</div></div>'
@@ -990,13 +1031,13 @@ def artist_rows(artists, followed, q):
 
 def track_rows(tracks, saved, q):
     if not tracks:
-        return '<p class="note">אין תוצאות להצגה.</p>'
+        return _('<p class="note">אין תוצאות להצגה.</p>')
     rows = []
     for track in tracks:
         if saved.get(track["id"]):
-            action = '<span class="note">✓ שמור</span>'
+            action = _('<span class="note">✓ שמור</span>')
         else:
-            action = pick_form("/favourites/track", track["id"], q, "❤ שמור")
+            action = pick_form("/favourites/track", track["id"], q, _("❤ שמור"))
         rows.append(
             f"<li>{cover(track['image'])}"
             f'<div class="info"><div class="title">{spotify_link(track["name"], "track", track["id"])}</div>'
@@ -1022,20 +1063,18 @@ def favourites_page():
     followed = {a["id"] for a in favourites.followed_artists(sp, uid)}
     songs = favourites.saved_songs(sp, uid)
     body = (
-        "<h1>אמנים ושירים שאתם אוהבים</h1>"
+        _("<h1>אמנים ושירים שאתם אוהבים</h1>"
         '<p class="note">סמנו מה שאתם אוהבים, והבחירות יישמרו בחשבון הספוטיפיי שלכם: '
-        "אמנים שתעקבו אחריהם, ושירים שתשמרו. לפיהם נמליץ לכם על שירים נוספים.</p>"
-        + stat_boxes([("אמנים שאני עוקב אחריהם", len(followed)), ("שירים שמורים", songs)])
-        + '<form method="get" action="/favourites" class="toolbar">'
-        f'<label class="field">חיפוש<input type="text" name="q" value="{escape(q)}" placeholder="שם אמן או שיר"></label>'
-        '<button class="btn secondary" type="submit">חיפוש</button></form>'
+        "אמנים שתעקבו אחריהם, ושירים שתשמרו. לפיהם נמליץ לכם על שירים נוספים.</p>")
+        + stat_boxes([(_("אמנים שאני עוקב אחריהם"), len(followed)), (_("שירים שמורים"), songs)])
+        + _("<form method=\"get\" action=\"/favourites\" class=\"toolbar\"><label class=\"field\">חיפוש<input type=\"text\" name=\"q\" value=\"{a0}\" placeholder=\"שם אמן או שיר\"></label><button class=\"btn secondary\" type=\"submit\">חיפוש</button></form>", a0=escape(q))
     )
     if q:
         artists, tracks = favourites.search(sp, q)
         saved = favourites.saved_flags(sp, [t["id"] for t in tracks])
         body += (
-            "<h2>אמנים</h2>" + artist_rows(artists, followed, q)
-            + "<h2>שירים</h2>" + track_rows(tracks, saved, q)
+            _("<h2>אמנים</h2>") + artist_rows(artists, followed, q)
+            + _("<h2>שירים</h2>") + track_rows(tracks, saved, q)
         )
     else:
         rec = favourites.recommendations(sp, uid)
@@ -1043,18 +1082,18 @@ def favourites_page():
         saved = favourites.saved_flags(sp, [t["id"] for t in rec["tracks"]])
         tracks = [t for t in rec["tracks"] if not saved.get(t["id"])]
         if rec["source"] == "well_known":
-            heading = "זמרים מוכרים כדי להתחיל"
-            note = "עדיין אין לכם אמנים או שירים אהובים, אז אלה זמרים מוכרים. סמנו מי שאתם אוהבים, ונמליץ על עוד לפי זה."
+            heading = _("זמרים מוכרים כדי להתחיל")
+            note = _("עדיין אין לכם אמנים או שירים אהובים, אז אלה זמרים מוכרים. סמנו מי שאתם אוהבים, ונמליץ על עוד לפי זה.")
         else:
-            heading = "המלצות בשבילכם"
-            note = "אמנים דומים למה שאתם כבר אוהבים, ושירים מהם."
+            heading = _("המלצות בשבילכם")
+            note = _("אמנים דומים למה שאתם כבר אוהבים, ושירים מהם.")
         body += (
             f'<h2>{heading}</h2><p class="note">{note}</p>'
             + artist_rows(artists, followed, "")
-            + "<h2>שירים שאולי תאהבו</h2>"
+            + _("<h2>שירים שאולי תאהבו</h2>")
             + track_rows(tracks, saved, "")
         )
-    return page(body + '<p><a href="/">חזרה לדף הבית</a></p>', title="אמנים ושירים שאתם אוהבים")
+    return page(body + _('<p><a href="/">חזרה לדף הבית</a></p>'), title=_("אמנים ושירים שאתם אוהבים"))
 
 
 @app.route("/favourites/artist", methods=["POST"])
@@ -1090,45 +1129,32 @@ def home():
     if not session.get("token_info"):
         relogin = session.pop("relogin", False)
         return page(
-            "<h1>פלייליסטים שמתאימים בדיוק לרגע</h1>"
+            lang_picker()
+            + _("<h1>פלייליסטים שמתאימים בדיוק לרגע</h1>"
             '<p class="note">בחרו ז\'אנר, מצב רוח ואירוע, ופלייליסטור יבנה לכם פלייליסט חדש בספוטיפיי.</p>'
-            '<a class="btn" href="/login">התחברות עם ספוטיפיי</a>'
-            + (RELOGIN_NOTE if relogin else ""),
+            '<a class="btn" href="/login">התחברות עם ספוטיפיי</a>')
+            + (_(RELOGIN_NOTE) if relogin else ""),
             images=login_images(),
         )
     sp = get_spotify_client()
     onboarding_card = (
-        '<a href="/favourites">🌟 בחרו אמנים ושירים שאתם אוהבים'
-        '<small>ככה נוכל להמליץ לכם על שירים שמתאימים לטעם שלכם</small></a>'
+        _('<a href="/favourites">🌟 בחרו אמנים ושירים שאתם אוהבים'
+        '<small>ככה נוכל להמליץ לכם על שירים שמתאימים לטעם שלכם</small></a>')
         if sp is not None and wants_favourites(sp) else ""
     )
     vibe = themes.THEMES[current_vibe()["theme"]]
     auto = themes.THEMES[auto_vibe()["theme"]]
     return page(
-        "<h1>מה נשמע היום?</h1>"
-        f'<div class="vibe"><span class="vibe-emoji" aria-hidden="true">{vibe["emoji"]}</span>'
-        f'<span class="vibe-text"><b>הווייב שלך עכשיו: {escape(vibe["label"])}</b>'
+        lang_picker()
+        + _("<h1>מה נשמע היום?</h1><div class=\"vibe\"><span class=\"vibe-emoji\" aria-hidden=\"true\">{a0}</span><span class=\"vibe-text\"><b>הווייב שלך עכשיו: {a1}</b>", a0=vibe["emoji"], a1=escape(_(vibe["label"])))
         + (
-            "<span>בול מה שהכי מתנגן אצלך לאחרונה 🔥</span>" if vibe is auto
-            else f'<span>מה שהכי מתנגן אצלך: {auto["emoji"]} {escape(auto["label"])} · אפשר להחליף בתפריט למעלה</span>'
+            _("<span>בול מה שהכי מתנגן אצלך לאחרונה 🔥</span>") if vibe is auto
+            else _("<span>מה שהכי מתנגן אצלך: {a0} {a1} · אפשר להחליף בתפריט למעלה</span>", a0=auto["emoji"], a1=escape(_(auto["label"])))
         )
         + "</span></div>"
         + '<div class="menu">'
         + onboarding_card
-        + '<a href="/build">✨ צור פלייליסט חדש<small>לפי ז\'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a>'
-        '<a href="/saved-tracks">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם השמעת קטעים ומיון לפי אמן, תאריך ועוד</small></a>'
-        '<a href="/my-artists">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a>'
-        '<a href="/stats">📊 הסטטיסטיקות שלי<small>ז\'אנרים, עשורים, אמנים מובילים וכרטיס לשיתוף</small></a>'
-        '<a href="/my-playlists">🛠 הפלייליסטים שיצרתי<small>שינוי שם, הסרת שירים וסידור</small></a>'
-        "</div>"
-        '<p class="note">הנתונים נשמרים לכמה שעות כדי שהאפליקציה תהיה מהירה. '
-        '<a href="/refresh">רענון נתונים מספוטיפיי</a></p>'
-        '<form method="post" action="/delete-data" class="card" '
-        'onsubmit="return confirm(\'למחוק מהשרת את הנתונים ששמורים עליכם? חשבון הספוטיפיי שלכם לא ישתנה.\')">'
-        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
-        '<p class="note">הנתונים שנשמרו בשרת: הספרייה ושירים שאהבתם, כדי שהאפליקציה תהיה מהירה. '
-        'מחיקה כאן לא משנה שום דבר בספוטיפיי.</p>'
-        '<button class="btn secondary" type="submit">מחיקת הנתונים שלי מהשרת</button></form>'
+        + _("<a href=\"/build\">✨ צור פלייליסט חדש<small>לפי ז'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a><a href=\"/saved-tracks\">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם השמעת קטעים ומיון לפי אמן, תאריך ועוד</small></a><a href=\"/my-artists\">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a><a href=\"/stats\">📊 הסטטיסטיקות שלי<small>ז'אנרים, עשורים, אמנים מובילים וכרטיס לשיתוף</small></a><a href=\"/my-playlists\">🛠 הפלייליסטים שיצרתי<small>שינוי שם, הסרת שירים וסידור</small></a></div><p class=\"note\">הנתונים נשמרים לכמה שעות כדי שהאפליקציה תהיה מהירה. <a href=\"/refresh\">רענון נתונים מספוטיפיי</a></p><form method=\"post\" action=\"/delete-data\" class=\"card\" onsubmit=\"return confirm('למחוק מהשרת את הנתונים ששמורים עליכם? חשבון הספוטיפיי שלכם לא ישתנה.')\"><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><p class=\"note\">הנתונים שנשמרו בשרת: הספרייה ושירים שאהבתם, כדי שהאפליקציה תהיה מהירה. מחיקה כאן לא משנה שום דבר בספוטיפיי.</p><button class=\"btn secondary\" type=\"submit\">מחיקת הנתונים שלי מהשרת</button></form>", a0=csrf_token())
     )
 
 
@@ -1173,12 +1199,12 @@ def callback():
     code = request.args.get("code")
     expected_state = session.pop("oauth_state", None)
     if not code or not expected_state or request.args.get("state") != expected_state:
-        return page("<p>ההתחברות בוטלה או נכשלה, או שהבקשה לא הגיעה מהאפליקציה. <a href=\"/login\">נסו שוב</a>.</p>"), 400
+        return page(_("<p>ההתחברות בוטלה או נכשלה, או שהבקשה לא הגיעה מהאפליקציה. <a href=\"/login\">נסו שוב</a>.</p>")), 400
 
     try:
         token_info = make_auth().get_access_token(code, check_cache=False)
     except SpotifyOauthError:
-        return page('<p>ההתחברות נכשלה. <a href="/login">נסו שוב</a>.</p>'), 400
+        return page(_('<p>ההתחברות נכשלה. <a href="/login">נסו שוב</a>.</p>')), 400
     session["token_info"] = token_info
     sp = spotipy.Spotify(auth=token_info["access_token"])
     user = sp.current_user()
@@ -1196,7 +1222,7 @@ def saved_tracks():
 
     uid = user_id(sp)
     saved = library.cached(uid, "saved", lambda: library.all_saved_tracks(sp))
-    track_ranks, _ = library.cached(uid, "top_tracks", lambda: library.top_ranks(sp, "tracks"))
+    track_ranks, _objects = library.cached(uid, "top_tracks", lambda: library.top_ranks(sp, "tracks"))
 
     tracks = []
     for item in saved:
@@ -1210,15 +1236,13 @@ def saved_tracks():
         )
         tracks.append(result)
 
-    columns = [("", None), ("", None), ("", None), ("שיר", "text"), ("אמן", "text"), ("אלבום", "text"),
-               ("נוסף", "text"), ("אורך", "num"), ("דירוג", "num")]
+    columns = [("", None), ("", None), ("", None), (_("שיר"), "text"), (_("אמן"), "text"), (_("אלבום"), "text"),
+               (_("נוסף"), "text"), (_("אורך"), "num"), (_("דירוג"), "num")]
     rows = []
     for t in tracks:
         added = t["added"]
         row = (
-            f'<td><input type="checkbox" name="uri" value="{escape(t["uri"])}" aria-label="לסמן את {escape(t["name"])}"></td>'
-            f"<td>{play_button(t)}</td>"
-            f"<td>{spotify_link('', 'album', t['album_id'], cover(t['image']))}</td>"
+            _("<td><input type=\"checkbox\" name=\"uri\" value=\"{a0}\" aria-label=\"לסמן את {a1}\"></td><td>{a2}</td><td>{a3}</td>", a0=escape(t["uri"]), a1=escape(t["name"]), a2=play_button(t), a3=spotify_link('', 'album', t['album_id'], cover(t['image'])))
             + cell(t["name"], cls="name", html=spotify_link(t["name"], "track", t["id"]))
             + cell(t["artist"], cls="short", html=artist_links(t))
             + cell(t["album"], cls="short muted", html=spotify_link(t["album"], "album", t["album_id"]))
@@ -1230,30 +1254,30 @@ def saved_tracks():
         )
         rows.append(f"<tr>{row}</tr>")
 
-    artists_count = len({a for t in tracks for a, _ in t["artists"]})
+    artists_count = len({a for t in tracks for a, _name in t["artists"]})
     total_hours = sum(t["duration"] for t in tracks) / 3_600_000
     note = (
-        '<p class="note">לחיצה על ▶ משמיעה קטע מהשיר (ואם אין, נפתח נגן ספוטיפיי בתחתית). "דירוג" הוא המקום של השיר '
-        "ב-50 השירים שאתם הכי שומעים (ב-4 השבועות האחרונים, ב-6 החודשים האחרונים, או בכל הזמנים).</p>"
+        _('<p class="note">לחיצה על ▶ משמיעה קטע מהשיר (ואם אין, נפתח נגן ספוטיפיי בתחתית). "דירוג" הוא המקום של השיר '
+        "ב-50 השירים שאתם הכי שומעים (ב-4 השבועות האחרונים, ב-6 החודשים האחרונים, או בכל הזמנים).</p>")
     )
     return page(
-        "<h1>כל השירים שאהבתי</h1>"
-        + stat_boxes([("שירים", len(tracks)), ("אמנים", artists_count), ("שעות האזנה ברשימה", f"{total_hours:.1f}")])
+        _("<h1>כל השירים שאהבתי</h1>")
+        + stat_boxes([(_("שירים"), len(tracks)), (_("אמנים"), artists_count), (_("שעות האזנה ברשימה"), f"{total_hours:.1f}")])
         + note
-        + '<input type="text" class="search" data-table="tracks" placeholder="חיפוש שיר, אמן או אלבום...">'
+        + _('<input type="text" class="search" data-table="tracks" placeholder="חיפוש שיר, אמן או אלבום...">')
         + '<form method="post" action="/save">'
         + '<div class="toolbar">'
-        + '<label class="field">שם לפלייליסט מהשירים שסימנתי'
-        + '<input type="text" name="title" value="פלייליסטור - השירים שאהבתי" maxlength="100"></label>'
-        + '<button type="button" class="btn secondary" data-check-visible="tracks">סמן את כל המוצגים</button>'
-        + '<button type="submit" class="btn">צור פלייליסט מהמסומנים</button>'
+        + _('<label class="field">שם לפלייליסט מהשירים שסימנתי')
+        + _('<input type="text" name="title" value="פלייליסטור - השירים שאהבתי" maxlength="100"></label>')
+        + _('<button type="button" class="btn secondary" data-check-visible="tracks">סמן את כל המוצגים</button>')
+        + _('<button type="submit" class="btn">צור פלייליסט מהמסומנים</button>')
         + "</div>"
-        + '<p class="note">טיפ: חפשו אמן או אלבום, לחצו "סמן את כל המוצגים", ואז "צור פלייליסט". '
-        + 'לפלייליסט לפי ז\'אנר או מצב רוח מתוך השירים שאהבתם, השתמשו ב<a href="/build">יצירת פלייליסט</a>.</p>'
+        + _('<p class="note">טיפ: חפשו אמן או אלבום, לחצו "סמן את כל המוצגים", ואז "צור פלייליסט". ')
+        + _('לפלייליסט לפי ז\'אנר או מצב רוח מתוך השירים שאהבתם, השתמשו ב<a href="/build">יצירת פלייליסט</a>.</p>')
         + f'<div class="table-wrap"><table id="tracks" class="sortable numbered"><thead>{header(columns)}</thead>'
         + f'<tbody>{"".join(rows)}</tbody></table></div>'
         + "</form>",
-        title="כל השירים שאהבתי", wide=True, script=TABLE_JS + LAZY_PLAY_JS,
+        title=_("כל השירים שאהבתי"), wide=True, script=TABLE_JS + LAZY_PLAY_JS,
     )
 
 
@@ -1283,8 +1307,8 @@ def my_artists():
     for a, tags in zip(need_tags, get_tags_for_artists([a["name"] for a in need_tags])):
         a["genres"] = tags
 
-    columns = [("", None), ("אמן", "text"), ("שירים שאהבתי", "num"),
-               ("הדירוג שלך", "num"), ("ז'אנרים", "text"), ("עוקב", "num")]
+    columns = [("", None), (_("אמן"), "text"), (_("שירים שאהבתי"), "num"),
+               (_("הדירוג שלך"), "num"), (_("ז'אנרים"), "text"), (_("עוקב"), "num")]
     artists.sort(key=lambda a: (a["rank"][0] if a["rank"] else 999, -a["liked"]))
     rows = []
     for a in artists:
@@ -1300,22 +1324,22 @@ def my_artists():
 
     # בעברית הקופסה האחרונה מוצגת הכי שמאלה
     return page(
-        "<h1>כל האמנים שאני אוהב</h1>"
+        _("<h1>כל האמנים שאני אוהב</h1>")
         + stat_boxes([
-            ("אמנים", len(artists)),
-            ("בין המובילים שלי", sum(1 for a in artists if a["rank"])),
-            ("אני עוקב אחריהם", sum(a["followed"] for a in artists)),
+            (_("אמנים"), len(artists)),
+            (_("בין המובילים שלי"), sum(1 for a in artists if a["rank"])),
+            (_("אני עוקב אחריהם"), sum(a["followed"] for a in artists)),
         ])
-        + '<input type="text" class="search" data-table="artists" placeholder="חיפוש אמן או ז\'אנר...">'
+        + _('<input type="text" class="search" data-table="artists" placeholder="חיפוש אמן או ז\'אנר...">')
         + f'<div class="table-wrap"><table id="artists" class="sortable numbered"><thead>{header(columns)}</thead>'
         + f'<tbody>{"".join(rows)}</tbody></table></div>',
-        title="כל האמנים שאני אוהב", wide=True, script=TABLE_JS,
+        title=_("כל האמנים שאני אוהב"), wide=True, script=TABLE_JS,
     )
 
 
 def bar_chart(rows):
     """שורות (שם, כמות) כגרף עמודות אופקיות. העמודה הארוכה ביותר היא 100%."""
-    top = max((count for _, count in rows), default=1) or 1
+    top = max((count for _label, count in rows), default=1) or 1
     return '<div class="bars">' + "".join(
         f'<div class="bar-row"><span>{escape(label)}</span>'
         f'<span class="track"><span class="fill" style="width:{count * 100 // top}%"></span></span>'
@@ -1335,8 +1359,8 @@ def my_stats():
     saved = library.cached(uid, "saved", lambda: library.all_saved_tracks(sp))
     if not saved:
         return page(
-            "<h1>הסטטיסטיקות שלי</h1>"
-            '<p class="note">עדיין אין שירים שאהבתם בספוטיפיי. שמרו כמה שירים, ואז תופיע כאן התמונה המלאה.</p>'
+            _("<h1>הסטטיסטיקות שלי</h1>"
+            '<p class="note">עדיין אין שירים שאהבתם בספוטיפיי. שמרו כמה שירים, ואז תופיע כאן התמונה המלאה.</p>')
         )
     tags = liked_artist_tags(sp, uid, saved)
 
@@ -1357,55 +1381,55 @@ def my_stats():
             genre_counts[tag] += count
 
     top_artists = [(names[i], c) for i, c in artist_counts.most_common(10)]
-    top_genres = [(GENRE_NAMES.get(tag, tag), c) for tag, c in genre_counts.most_common(10)]
+    top_genres = [(_(GENRE_NAMES.get(tag, tag)), c) for tag, c in genre_counts.most_common(10)]
     decade_rows = [(decade_label(decade), c) for decade, c in sorted(decades.items())]
 
     # הכרטיס בלי אמוג'י (ראו share_card_svg), והטקסט לשיתוף עם אמוג'י
-    tiles, lines = [], ["🎧 ככה נשמע הטעם המוזיקלי שלי", f"❤️ {len(saved):,} שירים שאהבתי. אפס חרטות 😎"]
+    tiles, lines = [], [_("🎧 ככה נשמע הטעם המוזיקלי שלי"), _("❤️ {a0:,} שירים שאהבתי. אפס חרטות 😎", a0=len(saved))]
     if top_artists:
-        tiles.append(("האמן שהכי אהבתי", top_artists[0][0]))
-        lines.append(f"🎤 האמן שהכי אהבתי: {top_artists[0][0]}")
+        tiles.append((_("האמן שהכי אהבתי"), top_artists[0][0]))
+        lines.append(_("🎤 האמן שהכי אהבתי: {a0}", a0=top_artists[0][0]))
     if top_genres:
-        tiles.append(("הז'אנר המוביל", top_genres[0][0]))
-        lines.append(f"🎶 הז'אנר המוביל: {top_genres[0][0]}")
+        tiles.append((_("הז'אנר המוביל"), top_genres[0][0]))
+        lines.append(_("🎶 הז'אנר המוביל: {a0}", a0=top_genres[0][0]))
     if decades:
         best_decade = decade_label(max(decades.items(), key=lambda kv: kv[1])[0])
-        tiles.append(("העשור האהוב", best_decade))
-        lines.append(f"📅 העשור האהוב: {best_decade}")
+        tiles.append((_("העשור האהוב"), best_decade))
+        lines.append(_("📅 העשור האהוב: {a0}", a0=best_decade))
     if len(top_artists) >= 3:
         medals = ("🥇", "🥈", "🥉")
-        lines.append("🏆 הטופ 3 שלי: " + "  ".join(f"{m} {name}" for m, (name, _) in zip(medals, top_artists)))
-    lines.append(f"👀 חושבים שיש לכם טעם יותר טוב? תוכיחו 👉 {public_site()}")
+        lines.append(_("🏆 הטופ 3 שלי: ") + "  ".join(f"{m} {name}" for m, (name, _count) in zip(medals, top_artists)))
+    lines.append(_("👀 חושבים שיש לכם טעם יותר טוב? תוכיחו 👉 {a0}", a0=public_site()))
     card_text = "\n".join(lines)
     theme = current_vibe()["theme"]
 
     genres_html = (
         bar_chart(top_genres) if top_genres
-        else '<p class="note">עוד אין מספיק תגיות ז\'אנר לאמנים שאהבתם.</p>'
+        else _('<p class="note">עוד אין מספיק תגיות ז\'אנר לאמנים שאהבתם.</p>')
     )
     return page(
-        "<h1>הסטטיסטיקות שלי</h1>"
-        + stat_boxes([("שירים שאהבתי", len(saved)), ("אמנים שונים", len(artist_counts))])
-        + "<h2>ז'אנרים שאתם הכי אוהבים</h2>"
-        + '<p class="note">לפי התגיות של האמנים שאהבתם. ככל שיש לכם יותר שירים מאמן, הוא שוקל יותר.</p>'
+        _("<h1>הסטטיסטיקות שלי</h1>")
+        + stat_boxes([(_("שירים שאהבתי"), len(saved)), (_("אמנים שונים"), len(artist_counts))])
+        + _("<h2>ז'אנרים שאתם הכי אוהבים</h2>")
+        + _('<p class="note">לפי התגיות של האמנים שאהבתם. ככל שיש לכם יותר שירים מאמן, הוא שוקל יותר.</p>')
         + genres_html
-        + "<h2>עשורים</h2>"
-        + (bar_chart(decade_rows) if decade_rows else '<p class="note">אין מידע על שנות היציאה.</p>')
-        + "<h2>האמנים שאהבתם הכי הרבה</h2>"
+        + _("<h2>עשורים</h2>")
+        + (bar_chart(decade_rows) if decade_rows else _('<p class="note">אין מידע על שנות היציאה.</p>'))
+        + _("<h2>האמנים שאהבתם הכי הרבה</h2>")
         + bar_chart(top_artists)
-        + "<h2>📸 כרטיס לשיתוף</h2>"
+        + _("<h2>📸 כרטיס לשיתוף</h2>")
         + '<div class="share">'
         + share_card_svg(len(saved), tiles, theme)
-        + '<div><p class="note" style="margin-top:0">מוכן לסטורי או לפוסט. שתפו את התמונה, '
-        'או העתיקו את הטקסט לוואטסאפ.</p>'
+        + _('<div><p class="note" style="margin-top:0">מוכן לסטורי או לפוסט. שתפו את התמונה, '
+        'או העתיקו את הטקסט לוואטסאפ.</p>')
         + '<div class="toolbar">'
-        + '<button type="button" class="btn" id="share-card" hidden>📲 שיתוף</button>'
-        + '<button type="button" class="btn secondary" id="save-card">⬇️ שמירה כתמונה</button></div>'
-        + f'<textarea id="card-text" class="copy" readonly aria-label="טקסט לשיתוף">{escape(card_text)}</textarea>'
-        + '<div class="toolbar"><button type="button" class="btn secondary" id="copy-card">📋 העתקת טקסט</button></div>'
+        + _('<button type="button" class="btn" id="share-card" hidden>📲 שיתוף</button>')
+        + _('<button type="button" class="btn secondary" id="save-card">⬇️ שמירה כתמונה</button></div>')
+        + _("<textarea id=\"card-text\" class=\"copy\" readonly aria-label=\"טקסט לשיתוף\">{a0}</textarea>", a0=escape(card_text))
+        + _('<div class="toolbar"><button type="button" class="btn secondary" id="copy-card">📋 העתקת טקסט</button></div>')
         + "</div></div>"
-        + '<p><a href="/">חזרה לדף הבית</a></p>',
-        title="הסטטיסטיקות שלי", wide=True, script=COPY_JS + SAVE_CARD_JS,
+        + _('<p><a href="/">חזרה לדף הבית</a></p>'),
+        title=_("הסטטיסטיקות שלי"), wide=True, script=COPY_JS + SAVE_CARD_JS,
     )
 
 
@@ -1450,31 +1474,14 @@ def share_card_svg(total, tiles, theme):
         for i, h in enumerate([28, 52, 76, 44, 92, 60, 36, 84, 56, 98, 40, 70, 30, 88, 62, 46, 80, 34, 66, 50, 90, 38, 58])
     )
     return (
-        f'<svg id="card-svg" class="share-svg" xmlns="http://www.w3.org/2000/svg" role="img" '
-        f'aria-label="כרטיס הטעם המוזיקלי שלי" width="{CARD_WIDTH}" height="{CARD_HEIGHT}" '
-        f'viewBox="0 0 {CARD_WIDTH} {CARD_HEIGHT}" direction="rtl" font-family="Segoe UI, Arial, sans-serif">'
-        "<defs>"
-        f'<radialGradient id="glow1" cx="0.15" cy="0.1" r="0.75"><stop offset="0" stop-color="{c1}" stop-opacity="0.75"/>'
-        f'<stop offset="1" stop-color="{c1}" stop-opacity="0"/></radialGradient>'
-        f'<radialGradient id="glow2" cx="0.95" cy="0.75" r="0.7"><stop offset="0" stop-color="{c2}" stop-opacity="0.65"/>'
-        f'<stop offset="1" stop-color="{c2}" stop-opacity="0"/></radialGradient>'
-        f'<radialGradient id="glow3" cx="0.2" cy="1" r="0.55"><stop offset="0" stop-color="{c3}" stop-opacity="0.45"/>'
-        f'<stop offset="1" stop-color="{c3}" stop-opacity="0"/></radialGradient>'
-        f'<linearGradient id="card-accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{c1}"/>'
-        f'<stop offset="1" stop-color="{accent}"/></linearGradient>'
-        "</defs>"
-        f'<rect width="{CARD_WIDTH}" height="{CARD_HEIGHT}" fill="#0f1016"/>'
-        f'<rect width="{CARD_WIDTH}" height="{CARD_HEIGHT}" fill="url(#glow1)"/>'
-        f'<rect width="{CARD_WIDTH}" height="{CARD_HEIGHT}" fill="url(#glow2)"/>'
-        f'<rect width="{CARD_WIDTH}" height="{CARD_HEIGHT}" fill="url(#glow3)"/>'
-        f'<rect x="{mid - 150}" y="80" width="300" height="64" rx="32" fill="#ffffff" fill-opacity="0.1"/>'
-        + text(124, 32, "פלייליסטור", "#ffffff", "600", "0.9")
-        + text(260, 80, "הטעם המוזיקלי שלי", "#ffffff", "700")
+        _("<svg id=\"card-svg\" class=\"share-svg\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"כרטיס הטעם המוזיקלי שלי\" width=\"{a0}\" height=\"{a1}\" viewBox=\"0 0 {a2} {a3}\" direction=\"rtl\" font-family=\"Segoe UI, Arial, sans-serif\"><defs><radialGradient id=\"glow1\" cx=\"0.15\" cy=\"0.1\" r=\"0.75\"><stop offset=\"0\" stop-color=\"{a4}\" stop-opacity=\"0.75\"/><stop offset=\"1\" stop-color=\"{a5}\" stop-opacity=\"0\"/></radialGradient><radialGradient id=\"glow2\" cx=\"0.95\" cy=\"0.75\" r=\"0.7\"><stop offset=\"0\" stop-color=\"{a6}\" stop-opacity=\"0.65\"/><stop offset=\"1\" stop-color=\"{a7}\" stop-opacity=\"0\"/></radialGradient><radialGradient id=\"glow3\" cx=\"0.2\" cy=\"1\" r=\"0.55\"><stop offset=\"0\" stop-color=\"{a8}\" stop-opacity=\"0.45\"/><stop offset=\"1\" stop-color=\"{a9}\" stop-opacity=\"0\"/></radialGradient><linearGradient id=\"card-accent\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0\" stop-color=\"{a10}\"/><stop offset=\"1\" stop-color=\"{a11}\"/></linearGradient></defs><rect width=\"{a12}\" height=\"{a13}\" fill=\"#0f1016\"/><rect width=\"{a14}\" height=\"{a15}\" fill=\"url(#glow1)\"/><rect width=\"{a16}\" height=\"{a17}\" fill=\"url(#glow2)\"/><rect width=\"{a18}\" height=\"{a19}\" fill=\"url(#glow3)\"/><rect x=\"{a20}\" y=\"80\" width=\"300\" height=\"64\" rx=\"32\" fill=\"#ffffff\" fill-opacity=\"0.1\"/>", a0=CARD_WIDTH, a1=CARD_HEIGHT, a2=CARD_WIDTH, a3=CARD_HEIGHT, a4=c1, a5=c1, a6=c2, a7=c2, a8=c3, a9=c3, a10=c1, a11=accent, a12=CARD_WIDTH, a13=CARD_HEIGHT, a14=CARD_WIDTH, a15=CARD_HEIGHT, a16=CARD_WIDTH, a17=CARD_HEIGHT, a18=CARD_WIDTH, a19=CARD_HEIGHT, a20=mid - 150)
+        + text(124, 32, _("פלייליסטור"), "#ffffff", "600", "0.9")
+        + text(260, 80, _("הטעם המוזיקלי שלי"), "#ffffff", "700")
         + text(450, 180, f"{total:,}", accent, "800")
-        + text(520, 44, "שירים שאהבתי. אפס חרטות.", "#ffffff", "400", "0.78")
+        + text(520, 44, _("שירים שאהבתי. אפס חרטות."), "#ffffff", "400", "0.78")
         + tile_html
         + bars
-        + text(1280, 34, "חושבים שיש לכם טעם יותר טוב? בדקו בפלייליסטור", "#ffffff", "600", "0.85")
+        + text(1280, 34, _("חושבים שיש לכם טעם יותר טוב? בדקו בפלייליסטור"), "#ffffff", "600", "0.85")
         + "</svg>"
     )
 
@@ -1533,7 +1540,7 @@ def editable_or_404(sp, playlist_id):
     playlist = owned_playlist(sp, playlist_id)
     if playlist is None:
         return None, (page(
-            '<p>אפשר לערוך רק פלייליסטים שנוצרו בפלייליסטור. <a href="/my-playlists">לרשימה שלי</a>.</p>',
+            _('<p>אפשר לערוך רק פלייליסטים שנוצרו בפלייליסטור. <a href="/my-playlists">לרשימה שלי</a>.</p>'),
         ), 404)
     return playlist, None
 
@@ -1554,22 +1561,19 @@ def my_playlists():
         return redirect("/login")
     playlists = app_playlists(sp)
     if not playlists:
-        body = '<p class="note">עדיין לא שמרתם פלייליסטים דרך פלייליסטור.</p>'
+        body = _('<p class="note">עדיין לא שמרתם פלייליסטים דרך פלייליסטור.</p>')
     else:
         rows = "".join(
-            f"<li>{cover(image_url(p.get('images')))}"
-            f'<div class="info"><div class="title"><a class="sp" href="/playlist/{escape(p["id"])}">'
-            f'{escape(p["name"])}</a></div>'
-            f'<div class="sub">{playlist_size(p)} שירים</div></div></li>'
+            _("<li>{a0}<div class=\"info\"><div class=\"title\"><a class=\"sp\" href=\"/playlist/{a1}\">{a2}</a></div><div class=\"sub\">{a3} שירים</div></div></li>", a0=cover(image_url(p.get('images'))), a1=escape(p["id"]), a2=escape(p["name"]), a3=playlist_size(p))
             for p in playlists
         )
         body = f'<ul class="list">{rows}</ul>'
     return page(
-        "<h1>הפלייליסטים שיצרתי</h1>"
-        '<p class="note">שינוי שם, הסרת שירים וסידור, לפלייליסטים ששמרתם דרך פלייליסטור.</p>'
+        _("<h1>הפלייליסטים שיצרתי</h1>"
+        '<p class="note">שינוי שם, הסרת שירים וסידור, לפלייליסטים ששמרתם דרך פלייליסטור.</p>')
         + body
-        + '<p><a href="/">חזרה לדף הבית</a></p>',
-        title="הפלייליסטים שיצרתי",
+        + _('<p><a href="/">חזרה לדף הבית</a></p>'),
+        title=_("הפלייליסטים שיצרתי"),
     )
 
 
@@ -1587,7 +1591,7 @@ def playlist_row(playlist_id, position, track, count, token):
         )
 
     if track is None:
-        info = '<div class="title">שיר לא זמין</div>'
+        info = _('<div class="title">שיר לא זמין</div>')
         cover_html = '<div class="noimg"></div>'
         remove_extra = ""
     else:
@@ -1618,19 +1622,10 @@ def edit_playlist(playlist_id):
     token = csrf_token()
     rows = "".join(playlist_row(playlist_id, i, t, len(tracks), token) for i, t in enumerate(tracks))
     return page(
-        f"<h1>{escape(playlist['name'])}</h1>"
-        f'<p class="note">{playlist_size(playlist)} שירים. הזיזו שירים למעלה ולמטה, או הסירו אותם.</p>'
-        f'<form method="post" action="/playlist/{escape(playlist_id)}/rename" class="toolbar">'
-        f'<input type="hidden" name="csrf" value="{token}">'
-        f'<label class="field">שם חדש<input type="text" name="name" value="{escape(playlist["name"])}" maxlength="100"></label>'
-        '<button class="btn secondary" type="submit">שמירת השם</button></form>'
-        + (f'<ul class="list">{rows}</ul>' if rows else '<p class="note">הפלייליסט ריק.</p>')
-        + f'<form method="post" action="/playlist/{escape(playlist_id)}/unfollow" class="card" '
-        'onsubmit="return confirm(\'להסיר את הפלייליסט מהחשבון שלכם?\')">'
-        f'<input type="hidden" name="csrf" value="{token}">'
-        '<p class="note">ספוטיפיי לא מאפשר למחוק פלייליסט לגמרי דרך האפליקציה. הסרה תוציא אותו מהחשבון שלכם.</p>'
-        '<button class="btn secondary" type="submit">הסרה מהחשבון</button></form>'
-        + '<p><a href="/my-playlists">לרשימת הפלייליסטים</a></p>',
+        _("<h1>{a0}</h1><p class=\"note\">{a1} שירים. הזיזו שירים למעלה ולמטה, או הסירו אותם.</p><form method=\"post\" action=\"/playlist/{a2}/rename\" class=\"toolbar\"><input type=\"hidden\" name=\"csrf\" value=\"{a3}\"><label class=\"field\">שם חדש<input type=\"text\" name=\"name\" value=\"{a4}\" maxlength=\"100\"></label><button class=\"btn secondary\" type=\"submit\">שמירת השם</button></form>", a0=escape(playlist['name']), a1=playlist_size(playlist), a2=escape(playlist_id), a3=token, a4=escape(playlist["name"]))
+        + (f'<ul class="list">{rows}</ul>' if rows else _('<p class="note">הפלייליסט ריק.</p>'))
+        + _("<form method=\"post\" action=\"/playlist/{a0}/unfollow\" class=\"card\" onsubmit=\"return confirm('להסיר את הפלייליסט מהחשבון שלכם?')\"><input type=\"hidden\" name=\"csrf\" value=\"{a1}\"><p class=\"note\">ספוטיפיי לא מאפשר למחוק פלייליסט לגמרי דרך האפליקציה. הסרה תוציא אותו מהחשבון שלכם.</p><button class=\"btn secondary\" type=\"submit\">הסרה מהחשבון</button></form>", a0=escape(playlist_id), a1=token)
+        + _('<p><a href="/my-playlists">לרשימת הפלייליסטים</a></p>'),
         title=playlist["name"],
     )
 
@@ -1720,9 +1715,18 @@ DECADES = list(range(1950, 2030, 10))
 MISSING_CHOICE = "כדי לבנות פלייליסט, בחרו לפחות אחד: ז'אנר, מצב רוח או אירוע."
 
 
+# שם עשור בכל שפה. short: 90 במקום 1990, למשל "שנות ה-90"
+DECADE_FORMATS = {
+    "he": ("שנות ה-{short}", "שנות ה-{full}"), "en": ("{short}s", "{full}s"),
+    "es": ("años {short}", "años {full}"), "fr": ("années {short}", "années {full}"),
+    "ar": ("سنوات الـ{short}", "سنوات الـ{full}"), "ru": ("{short}-е", "{full}-е"),
+}
+
+
 def decade_label(decade):
-    """1990 → "שנות ה-90", 2010 → "שנות ה-2010"."""
-    return f"שנות ה-{decade % 100:02d}" if decade < 2000 else f"שנות ה-{decade}"
+    """1990 → "שנות ה-90", 2010 → "שנות ה-2010" (ובאנגלית 90s, 2010s)."""
+    old, new = DECADE_FORMATS[lang()]
+    return (old if decade < 2000 else new).format(short=f"{decade % 100:02d}", full=decade)
 
 
 def decade_options(first_label):
@@ -1738,41 +1742,22 @@ def build_form(error=""):
     """
     req = '<span class="req" aria-hidden="true">*</span>'
     return page(
-        "<h1>צור פלייליסט</h1>"
+        _("<h1>צור פלייליסט</h1>")
         + (f'<div class="form-error" role="alert" id="build-error">{escape(error)}</div>' if error
            else '<div class="form-error" role="alert" id="build-error" hidden></div>')
-        + '<form method="post" class="card" id="build-form" novalidate>'
-        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
-        f'<label class="field">מאיפה לקחת שירים{req}<select name="source" required>'
-        '<option value="search">🌍 מכל ספוטיפיי</option>'
-        '<option value="liked">❤️ רק מהשירים שאהבתי</option></select></label>'
-        f'<fieldset class="group{" invalid" if error else ""}" id="must-pick">'
-        f'<legend>מה מתאים לכם?{req}</legend>'
-        '<p class="note" style="margin-top:0">חובה לבחור לפחות אחד מהשלושה.</p>'
-        f'<label class="field">🎵 ז\'אנר<select name="genre_choice">{genre_options()}</select></label>'
-        '<label class="field">😊 מצב רוח<select name="mood"><option value="">ללא</option>'
+        + _("<form method=\"post\" class=\"card\" id=\"build-form\" novalidate><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><label class=\"field\">מאיפה לקחת שירים{a1}<select name=\"source\" required><option value=\"search\">🌍 מכל ספוטיפיי</option><option value=\"liked\">❤️ רק מהשירים שאהבתי</option></select></label><fieldset class=\"group{a2}\" id=\"must-pick\"><legend>מה מתאים לכם?{a3}</legend><p class=\"note\" style=\"margin-top:0\">חובה לבחור לפחות אחד מהשלושה.</p><label class=\"field\">🎵 ז'אנר<select name=\"genre_choice\">{a4}</select></label><label class=\"field\">😊 מצב רוח<select name=\"mood\"><option value=\"\">ללא</option>", a0=csrf_token(), a1=req, a2=" invalid" if error else "", a3=req, a4=genre_options())
         + options(GENRE_HINTS.keys())
-        + "</select></label>"
-        '<label class="field">📍 אירוע או סיטואציה<select name="event"><option value="">ללא</option>'
+        + _("</select></label>"
+        '<label class="field">📍 אירוע או סיטואציה<select name="event"><option value="">ללא</option>')
         + "".join(
-            f'<optgroup label="{escape(group)}">{options(events.keys())}</optgroup>'
+            f'<optgroup label="{escape(_(group))}">{options(events.keys())}</optgroup>'
             for group, events in EVENT_GROUPS.items()
         )
-        + "</select></label></fieldset>"
-        '<label class="field">🗣 שפה<select name="language">'
+        + _("</select></label></fieldset>"
+        '<label class="field">🗣 שפה<select name="language">')
         + options(LANGUAGES)
-        + "</select></label>"
-        '<div class="toolbar">'
-        f'<label class="field">📅 מעשור<select name="decade_from">{decade_options("כל העשורים")}</select></label>'
-        f'<label class="field">עד עשור<select name="decade_to">{decade_options("עד היום")}</select></label>'
-        "</div><br>"
-        f'<label class="field">כמות שירים{req}<span class="hint">בין 5 ל-{MAX_TRACKS}</span>'
-        f'<input name="count" type="number" value="20" min="5" max="{MAX_TRACKS}" required></label>'
-        '<label class="check"><input type="checkbox" name="personal" checked> לשלב שירים של האמנים המועדפים עליי</label>'
-        '<p class="note"><span class="req">*</span> שדה חובה</p>'
-        '<button class="btn" type="submit">✨ הצג שירים</button>'
-        "</form>",
-        title="צור פלייליסט", script=BUILD_CHECK_JS.replace("__MESSAGE__", json.dumps(MISSING_CHOICE)),
+        + _("</select></label><div class=\"toolbar\"><label class=\"field\">📅 מעשור<select name=\"decade_from\">{a0}</select></label><label class=\"field\">עד עשור<select name=\"decade_to\">{a1}</select></label></div><br><label class=\"field\">כמות שירים{a2}<span class=\"hint\">בין 5 ל-{a3}</span><input name=\"count\" type=\"number\" value=\"20\" min=\"5\" max=\"{a4}\" required></label><label class=\"check\"><input type=\"checkbox\" name=\"personal\" checked> לשלב שירים של האמנים המועדפים עליי</label><p class=\"note\"><span class=\"req\">*</span> שדה חובה</p><button class=\"btn\" type=\"submit\">✨ הצג שירים</button></form>", a0=decade_options(_("כל העשורים")), a1=decade_options(_("עד היום")), a2=req, a3=MAX_TRACKS, a4=MAX_TRACKS),
+        title=_("צור פלייליסט"), script=BUILD_CHECK_JS.replace("__MESSAGE__", json.dumps(_(MISSING_CHOICE), ensure_ascii=False)),
     )
 
 
@@ -1788,12 +1773,12 @@ def build():
     # קלט מהטופס: מגבילים אורך, ומקבלים רק ערכים מהתפריטים
     criteria = read_criteria()
     if not (criteria["genre"] or criteria["mood"] or criteria["event"]):
-        return build_form(MISSING_CHOICE), 400
+        return build_form(_(MISSING_CHOICE)), 400
     started = time.time()
     tracks = find_for(sp, criteria)
     print(f"[פלייליסטור] נבנו {len(tracks)} שירים תוך {time.time() - started:.1f} שניות")
     if not tracks:
-        return page('<p>לא נמצאו שירים. <a href="/build">נסו שילוב אחר</a>.</p>')
+        return page(_('<p>לא נמצאו שירים. <a href="/build">נסו שילוב אחר</a>.</p>'))
     token = remember_preview(user_id(sp), criteria, tracks)
     names = names_for(criteria)
     return render_preview(tracks, token, criteria, names[0], names, requested=criteria["count"])
@@ -1860,7 +1845,13 @@ def find_for(sp, criteria, exclude=(), count=None):
 
 
 def names_for(criteria):
-    """שם שמתאים לאווירה, ועוד כמה הצעות לכפתור "שם אחר"."""
+    """שם שמתאים לאווירה, ועוד כמה הצעות לכפתור "שם אחר". בשפות אחרות, שמות לפי מה שבחרתם."""
+    if lang() != "he":
+        parts = [_(GENRE_NAMES.get(criteria["genre"], criteria["genre"])) if criteria["genre"] else "",
+                 _(criteria["mood"]) if criteria["mood"] else "", _(criteria["event"]) if criteria["event"] else ""]
+        label = " · ".join(p for p in parts if p) or _("מיקס")
+        heart = " ❤️" if criteria["source"] == "liked" else ""
+        return [f"{label} 🎧{heart}", f"{label} · {_('מיקס')}{heart}", f"✨ {label}{heart}", f"{label} 🔥{heart}"]
     return suggest_names(
         criteria["genre"], criteria["mood"], criteria["event"],
         GENRE_NAMES.get(criteria["genre"], criteria["genre"]), from_liked=criteria["source"] == "liked",
@@ -1899,42 +1890,15 @@ def render_preview(tracks, token, criteria, title, names, requested=None):
     short = ""
     if requested and len(tracks) < requested:
         short = (
-            f'<div class="warn">ביקשתם {requested} שירים, ומצאנו {len(tracks)} שמתאימים לבחירות שלכם. '
-            "השלמנו כמה שאפשר בלי לצאת מהז'אנר, מהשפה ומהעשורים שבחרתם. "
-            "כדי לקבל יותר, אפשר לבחור פחות הגבלות (למשל בלי עשור, או שפה \"ביחד\").</div>"
+            _("<div class=\"warn\">ביקשתם {a0} שירים, ומצאנו {a1} שמתאימים לבחירות שלכם. השלמנו כמה שאפשר בלי לצאת מהז'אנר, מהשפה ומהעשורים שבחרתם. כדי לקבל יותר, אפשר לבחור פחות הגבלות (למשל בלי עשור, או שפה \"ביחד\").</div>", a0=requested, a1=len(tracks))
         )
     theme = themes.theme_for_choice(criteria["genre"], criteria["mood"], criteria["event"])
     covers = list(dict.fromkeys(t["image"] for t in tracks if t["image"]))[:BACKGROUND_IMAGES]
     return page(
-        f"<h1>{len(tracks)} שירים בשבילך</h1>"
+        _("<h1>{a0} שירים בשבילך</h1>", a0=len(tracks))
         + short
         + 
-        '<p class="note">בטלו את הסימון בשירים שלא מתאימים, העבירו שירים למעלה ולמטה, ואז שמרו. '
-        "לחיצה על ▶ משמיעה קטע מהשיר. אם אין קטע קצר, נפתח נגן ספוטיפיי של השיר בתחתית המסך. "
-        "לחיצה על שם השיר פותחת אותו בספוטיפיי.</p>"
-        '<form method="post" action="/save">'
-        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
-        f'<input type="hidden" name="theme" value="{escape(theme or "")}">'
-        f'<input type="hidden" name="preview" value="{escape(token)}">'
-        '<div class="toolbar">'
-        f'<label class="field">שם הפלייליסט<input type="text" id="title" name="title" value="{escape(title)}" maxlength="100"></label>'
-        f'<button type="button" class="btn secondary" id="other-name" data-names="{escape(json.dumps(names, ensure_ascii=False))}">🔄 שם אחר</button>'
-        "</div>"
-        '<div class="toolbar">'
-        '<label class="field">מיון<select id="sort">'
-        '<option value="">הסדר המקורי</option>'
-        '<option value="name">שם השיר</option><option value="artist">שם האמן</option>'
-        '<option value="duration">אורך</option><option value="year">שנת יציאה (הישנים קודם)</option>'
-        '<option value="bpm">קצב (BPM)</option><option value="energy">אנרגיה</option>'
-        '<option value="valence">שמחה</option></select></label>'
-        '<button type="button" class="btn secondary" id="shuffle">🔀 ערבב</button></div>'
-        f'<ul class="list numbered" id="playlist">{rows}</ul><br>'
-        '<div class="toolbar">'
-        '<button class="btn" type="submit">שמור בספוטיפיי</button>'
-        f'<button class="btn secondary" type="submit" formaction="/build/more">➕ הוסף עוד {EXTRA_TRACKS} שירים</button>'
-        "</div>"
-        "</form>"
-        '<p><a href="/build">התחלה מחדש</a></p>',
+        _("<p class=\"note\">בטלו את הסימון בשירים שלא מתאימים, העבירו שירים למעלה ולמטה, ואז שמרו. לחיצה על ▶ משמיעה קטע מהשיר. אם אין קטע קצר, נפתח נגן ספוטיפיי של השיר בתחתית המסך. לחיצה על שם השיר פותחת אותו בספוטיפיי.</p><form method=\"post\" action=\"/save\"><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><input type=\"hidden\" name=\"theme\" value=\"{a1}\"><input type=\"hidden\" name=\"preview\" value=\"{a2}\"><div class=\"toolbar\"><label class=\"field\">שם הפלייליסט<input type=\"text\" id=\"title\" name=\"title\" value=\"{a3}\" maxlength=\"100\"></label><button type=\"button\" class=\"btn secondary\" id=\"other-name\" data-names=\"{a4}\">🔄 שם אחר</button></div><div class=\"toolbar\"><label class=\"field\">מיון<select id=\"sort\"><option value=\"\">הסדר המקורי</option><option value=\"name\">שם השיר</option><option value=\"artist\">שם האמן</option><option value=\"duration\">אורך</option><option value=\"year\">שנת יציאה (הישנים קודם)</option><option value=\"bpm\">קצב (BPM)</option><option value=\"energy\">אנרגיה</option><option value=\"valence\">שמחה</option></select></label><button type=\"button\" class=\"btn secondary\" id=\"shuffle\">🔀 ערבב</button></div><ul class=\"list numbered\" id=\"playlist\">{a5}</ul><br><div class=\"toolbar\"><button class=\"btn\" type=\"submit\">שמור בספוטיפיי</button><button class=\"btn secondary\" type=\"submit\" formaction=\"/build/more\">➕ הוסף עוד {a6} שירים</button></div></form><p><a href=\"/build\">התחלה מחדש</a></p>", a0=csrf_token(), a1=escape(theme or ""), a2=escape(token), a3=escape(title), a4=escape(json.dumps(names, ensure_ascii=False)), a5=rows, a6=EXTRA_TRACKS),
         theme=theme, images=covers or None, script=NAME_JS + SORT_JS + LAZY_PLAY_JS,
     )
 
@@ -1956,7 +1920,7 @@ def build_more():
     extra = find_for(sp, preview["criteria"], exclude=set(known), count=EXTRA_TRACKS)
     tracks = (kept + extra)[:MAX_TRACKS]
     if not tracks:
-        return page('<p>אין שירים להציג. <a href="/build">חזרה ליצירת פלייליסט</a>.</p>')
+        return page(_('<p>אין שירים להציג. <a href="/build">חזרה ליצירת פלייליסט</a>.</p>'))
     names = names_for(preview["criteria"])
     title = request.form.get("title", "").strip()[:100] or names[0]
     token = remember_preview(preview["uid"], preview["criteria"], tracks)
@@ -1971,14 +1935,12 @@ def save():
 
     uris = [u for u in request.form.getlist("uri") if u.startswith("spotify:track:")][:MAX_SAVE]
     if not uris:
-        return page('<p>לא נבחרו שירים. <a href="/build">חזרה ליצירת פלייליסט</a>.</p>')
-    title = request.form.get("title", "").strip()[:100] or "פלייליסטור - מיקס"
+        return page(_('<p>לא נבחרו שירים. <a href="/build">חזרה ליצירת פלייליסט</a>.</p>'))
+    title = request.form.get("title", "").strip()[:100] or _("פלייליסטור - מיקס")
     url = create_playlist(sp, title, uris)
     theme = request.form.get("theme")
     return page(
-        f'<div class="success"><h1>הפלייליסט נשמר! 🎉</h1><p>{escape(title)}, {len(uris)} שירים.</p>'
-        f'<a class="btn" href="{escape(url)}" target="_blank" rel="noopener">פתיחה בספוטיפיי</a></div>'
-        '<p><a href="/build">ליצירת פלייליסט נוסף</a></p>',
+        _("<div class=\"success\"><h1>הפלייליסט נשמר! 🎉</h1><p>{a0}, {a1} שירים.</p><a class=\"btn\" href=\"{a2}\" target=\"_blank\" rel=\"noopener\">פתיחה בספוטיפיי</a></div><p><a href=\"/build\">ליצירת פלייליסט נוסף</a></p>", a0=escape(title), a1=len(uris), a2=escape(url)),
         theme=theme if theme in themes.THEMES else None,
     )
 
