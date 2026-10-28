@@ -14,6 +14,7 @@ import library
 import ratelimit
 import themes
 from i18n import _, LANGS, lang, text_dir, translate_js
+from translations import TRANSLATIONS
 import favourites
 import json
 from urllib.parse import urlencode, urlsplit
@@ -872,7 +873,7 @@ def track_row(track, checkbox=False, feat=None):
     info = ""
     if feat:
         attrs += f' data-bpm="{feat.get("tempo") or 0}" data-energy="{feat.get("energy") or 0}" data-valence="{feat.get("valence") or 0}"'
-        info = describe(feat)
+        info = describe(feat, _("אנרגיה"), _("שמחה"))
     moves = (
         _('<span class="moves">'
         '<button type="button" class="move" data-dir="-1" aria-label="העברה למעלה">▲</button>'
@@ -1499,6 +1500,15 @@ def playlist_item_track(item):
     return item.get("item") or item.get("track")
 
 
+# התיאור שהאפליקציה כותבת בספוטיפיי, בכל שפה. לפיו מזהים פלייליסטים שנוצרו כאן
+DESCRIPTIONS = [PLAYLIST_DESCRIPTION] + list(TRANSLATIONS.get(PLAYLIST_DESCRIPTION, {}).values())
+
+
+def made_here(playlist):
+    description = playlist.get("description") or ""
+    return any(text in description for text in DESCRIPTIONS)
+
+
 def app_playlists(sp):
     """הפלייליסטים של המשתמש שנוצרו בפלייליסטור. לפי הבעלות והתיאור שהאפליקציה כותבת."""
     uid = user_id(sp)
@@ -1507,7 +1517,7 @@ def app_playlists(sp):
         block = sp.current_user_playlists(limit=50, offset=offset)
         found += [
             p for p in block["items"]
-            if p and p["owner"]["id"] == uid and PLAYLIST_DESCRIPTION in (p.get("description") or "")
+            if p and p["owner"]["id"] == uid and made_here(p)
         ]
         if not block.get("next"):
             return found
@@ -1519,7 +1529,7 @@ def owned_playlist(sp, playlist_id):
     if not favourites.is_spotify_id(playlist_id):
         return None
     playlist = sp.playlist(playlist_id, fields="id,name,description,owner.id,items.total,tracks.total")
-    if playlist["owner"]["id"] != user_id(sp) or PLAYLIST_DESCRIPTION not in (playlist.get("description") or ""):
+    if playlist["owner"]["id"] != user_id(sp) or not made_here(playlist):
         return None
     return playlist
 
@@ -1937,7 +1947,7 @@ def save():
     if not uris:
         return page(_('<p>לא נבחרו שירים. <a href="/build">חזרה ליצירת פלייליסט</a>.</p>'))
     title = request.form.get("title", "").strip()[:100] or _("פלייליסטור - מיקס")
-    url = create_playlist(sp, title, uris)
+    url = create_playlist(sp, title, uris, _(PLAYLIST_DESCRIPTION))
     theme = request.form.get("theme")
     return page(
         _("<div class=\"success\"><h1>הפלייליסט נשמר! 🎉</h1><p>{a0}, {a1} שירים.</p><a class=\"btn\" href=\"{a2}\" target=\"_blank\" rel=\"noopener\">פתיחה בספוטיפיי</a></div><p><a href=\"/build\">ליצירת פלייליסט נוסף</a></p>", a0=escape(title), a1=len(uris), a2=escape(url)),

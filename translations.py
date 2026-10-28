@@ -1592,6 +1592,13 @@ TRANSLATIONS = {
         'ar': 'أُضيفت',
         'ru': 'Добавлено',
     },
+    'נוצר ב-פלייליסטור': {
+        'en': 'Created with Playlistor',
+        'es': 'Creada con Playlistor',
+        'fr': 'Créée avec Playlistor',
+        'ar': 'أُنشئت عبر Playlistor',
+        'ru': 'Создано в Playlistor',
+    },
     'ניקיון הבית': {
         'en': 'Cleaning the house',
         'es': 'Limpiar la casa',

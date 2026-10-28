@@ -177,15 +177,15 @@ def get_features(track_ids):
     return {i: cache[i] for i in track_ids if cache.get(i)}
 
 
-def describe(features):
-    """תיאור קצר לתצוגה: קצב ואנרגיה."""
+def describe(features, energy_label="אנרגיה", happy_label="שמחה"):
+    """תיאור קצר לתצוגה: קצב ואנרגיה. התוויות מגיעות בשפת הממשק."""
     if not features:
         return ""
     parts = []
     if features.get("tempo"):
         parts.append(f"{round(features['tempo'])} BPM")
     if features.get("energy") is not None:
-        parts.append(f"אנרגיה {round(features['energy'] * 100)}%")
+        parts.append(f"{energy_label} {round(features['energy'] * 100)}%")
     if features.get("valence") is not None:
-        parts.append(f"שמחה {round(features['valence'] * 100)}%")
+        parts.append(f"{happy_label} {round(features['valence'] * 100)}%")
     return " · ".join(parts)
