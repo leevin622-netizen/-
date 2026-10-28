@@ -739,7 +739,7 @@ def cover(url):
 
 
 def genre_options():
-    groups = [("מוזיקה בעברית", HEBREW_GENRES), ("מוזיקה מהעולם", WORLD_GENRES)]
+    groups = [("מוזיקה בעברית", HEBREW_GENRES)]
     return '<option value="">ללא</option>' + "".join(
         f'<optgroup label="{escape(label)}">'
         + "".join(f'<option value="{escape(term)}">{escape(name)}</option>' for name, term in genres)
@@ -1224,7 +1224,7 @@ def saved_tracks():
         tracks.append(result)
 
     columns = [("", None), ("", None), ("", None), ("שיר", "text"), ("אמן", "text"), ("אלבום", "text"),
-               ("נוסף", "text"), ("אורך", "num"), ("פופולריות", "num"), ("דירוג", "num")]
+               ("נוסף", "text"), ("אורך", "num"), ("דירוג", "num")]
     rows = []
     for t in tracks:
         first_artist = t["artists"][0][1] if t["artists"] else t["artist"]
@@ -1240,7 +1240,6 @@ def saved_tracks():
             # התאריך מוצג קצר (31.12.24), והמיון לפי התאריך המלא
             + cell(f"{added[8:10]}.{added[5:7]}.{added[2:4]}" if len(added) == 10 else added, added, "muted")
             + cell(format_duration(t["duration"]), t["duration"], "muted")
-            + cell("" if t["popularity"] is None else t["popularity"], "" if t["popularity"] is None else t["popularity"])
             # בדירוג, מקום 1 הוא הכי טוב, ולכן ממיינים לפי מספר שלילי
             + cell(format_rank(t["rank"]), -t["rank"][0] if t["rank"] else "", "muted")
         )
@@ -1301,32 +1300,27 @@ def my_artists():
         a["genres"] = tags
 
 
-    columns = [("", None), ("אמן", "text"), ("שירים שאהבתי", "num"), ("עוקב", "num"),
-               ("הדירוג שלך", "num"), ("ז'אנרים", "text")]
-    if plays is not None:
-        columns.append(("השמעות (Last.fm)", "num"))
+    columns = [("", None), ("אמן", "text"), ("שירים שאהבתי", "num"),
+               ("הדירוג שלך", "num"), ("ז'אנרים", "text"), ("עוקב", "num")]
     artists.sort(key=lambda a: (a["rank"][0] if a["rank"] else 999, -a["liked"]))
     rows = []
     for a in artists:
-        play_count = plays.get(a["name"].lower()) if plays else None
         row = (
             f"<td>{spotify_link('', 'artist', a['id'], cover(a['image']))}</td>"
             + cell(a["name"], cls="name", html=spotify_link(a["name"], "artist", a["id"]))
             + cell(a["liked"])
-            + cell("✓" if a["followed"] else "", 1 if a["followed"] else 0)
             + cell(format_rank(a["rank"]), -a["rank"][0] if a["rank"] else "")
             + cell(", ".join(a["genres"][:3]), cls="name muted")
+            + cell("✓" if a["followed"] else "", 1 if a["followed"] else 0)
         )
-        if plays is not None:
-            row += cell("" if play_count is None else play_count, "" if play_count is None else play_count)
         rows.append(f"<tr>{row}</tr>")
 
     return page(
         "<h1>כל האמנים שאני אוהב</h1>"
         + stat_boxes([
             ("אמנים", len(artists)),
-            ("אני עוקב אחריהם", sum(a["followed"] for a in artists)),
             ("בין המובילים שלי", sum(1 for a in artists if a["rank"])),
+            ("אני עוקב אחריהם", sum(a["followed"] for a in artists)),
         ])
         + '<input type="text" class="search" data-table="artists" placeholder="חיפוש אמן או ז\'אנר...">'
         + f'<div class="table-wrap"><table id="artists" class="sortable"><thead>{header(columns)}</thead>'
@@ -1772,8 +1766,6 @@ def build_form(error=""):
         f'<legend>מה מתאים לכם?{req}</legend>'
         '<p class="note" style="margin-top:0">חובה לבחור לפחות אחד מהשלושה.</p>'
         f'<label class="field">🎵 ז\'אנר<select name="genre_choice">{genre_options()}</select></label>'
-        '<label class="field">או ז\'אנר אחר<span class="hint">באנגלית, למשל: reggaeton, afrobeats</span>'
-        '<input type="text" name="genre" placeholder="לא חובה"></label>'
         '<label class="field">😊 מצב רוח<select name="mood"><option value="">ללא</option>'
         + options(GENRE_HINTS.keys())
         + "</select></label>"
@@ -1793,15 +1785,6 @@ def build_form(error=""):
         f'<label class="field">כמות שירים{req}<span class="hint">בין 5 ל-{MAX_TRACKS}</span>'
         f'<input name="count" type="number" value="20" min="5" max="{MAX_TRACKS}" required></label>'
         '<label class="check"><input type="checkbox" name="personal" checked> לשלב שירים של האמנים המועדפים עליי</label>'
-        '<details class="card"><summary>כוונון ידני (רשות)</summary>'
-        '<label class="check"><input type="checkbox" name="manual"> להשתמש בטווחים שאני קובע, במקום ברירת המחדל לפי מצב הרוח והאירוע</label>'
-        + "".join(
-            f'<label class="field">{label}: <output id="out-{key}">0% עד 100%</output>'
-            f'<input type="range" name="{key}_min" min="0" max="100" value="0">'
-            f'<input type="range" name="{key}_max" min="0" max="100" value="100"></label>'
-            for key, label in (("energy", "אנרגיה"), ("danceability", "ריקוד"), ("valence", "שמחה"))
-        )
-        + "</details>"
         f'<p class="note"><span class="req">*</span> שדה חובה</p>'
         '<button class="btn" type="submit">✨ הצג שירים</button>'
         "</form>",

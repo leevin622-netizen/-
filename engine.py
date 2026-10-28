@@ -32,6 +32,12 @@ GENRE_HINTS = {
     "עצוב": ["sad", "ballad", "indie"],
     "ממריץ": ["rock", "electronic", "hip hop"],
     "רגוע": ["chill", "acoustic", "jazz"],
+    "רומנטי": ["romantic", "r&b", "soul"],
+    "נוסטלגי": ["oldies", "80s", "90s"],
+    "מוטיבציה": ["motivation", "hip hop", "rock"],
+    "מסיבתי": ["party", "dance", "house"],
+    "קיצי": ["summer", "reggae", "pop"],
+    "אופטימי": ["feel good", "indie", "pop"],
 }
 
 # אירועים וסיטואציות, לפי קטגוריות בתפריט. לכל אחד: מונחי החיפוש בספוטיפיי
@@ -39,19 +45,13 @@ EVENT_GROUPS = {
     "ספורט ותנועה": {
         "ריצה": ["workout", "electronic", "hip hop"],
         "חדר כושר": ["workout", "hip hop", "rock"],
-        "רכיבה על אופניים": ["workout", "dance", "electronic"],
         "יוגה ומדיטציה": ["meditation", "ambient", "chill"],
-        "הליכה": ["pop", "indie", "acoustic"],
     },
     "יום יום": {
         "בוקר טוב": ["morning", "acoustic", "pop"],
         "נסיעה באוטו": ["road trip", "pop", "rock"],
-        "בדרך לעבודה": ["pop", "indie", "hip hop"],
         "עבודה וריכוז": ["instrumental", "lo-fi", "chill"],
-        "לימודים": ["lo-fi", "instrumental", "chill"],
         "בישול": ["jazz", "soul", "funk"],
-        "ניקיון הבית": ["pop", "dance", "funk"],
-        "מקלחת": ["pop", "dance", "sing along"],
         "לפני השינה": ["sleep", "ambient", "piano"],
     },
     "חברים ואירועים": {
@@ -59,30 +59,14 @@ EVENT_GROUPS = {
         "יום הולדת": ["party", "pop", "dance"],
         "חתונה": ["wedding", "pop", "dance"],
         "על האש": ["mizrahi", "pop", "reggae"],
-        "ארוחת ערב עם חברים": ["jazz", "soul", "acoustic"],
         "ערב רומנטי": ["romantic", "r&b", "soul"],
-        "קריוקי": ["sing along", "pop", "classic"],
-        "ערב משחקים": ["funk", "indie", "pop"],
     },
-    "שבת וחגים": {
+    "שבת וטבע": {
         "שבת בבית": ["israeli folk", "acoustic", "jewish"],
-        "חגים": ["jewish", "israeli folk", "mizrahi"],
-        "ערב שירה בציבור": ["israeli folk", "sing along", "acoustic"],
-    },
-    "טבע וחופש": {
         "ים": ["summer", "reggae", "pop"],
-        "טיול בטבע": ["folk", "acoustic", "indie"],
-        "קמפינג ומדורה": ["folk", "acoustic", "sing along"],
-        "חופשה בחו\"ל": ["summer", "latin", "pop"],
-        "בריכה": ["summer", "dance", "reggaeton"],
-    },
-    "רגשות": {
-        "פרידה": ["sad", "ballad", "breakup"],
-        "געגועים": ["ballad", "nostalgia", "acoustic"],
-        "נוסטלגיה": ["oldies", "80s", "90s"],
-        "מוטיבציה": ["motivation", "hip hop", "rock"],
     },
 }
+
 EVENT_HINTS = {event: terms for group in EVENT_GROUPS.values() for event, terms in group.items()}
 
 LANGUAGES = ["ביחד", "עברית", "אנגלית"]
@@ -98,6 +82,7 @@ HEBREW_GENRES = [
     ("שירי ארץ ישראל", "israeli folk"),
     ("מוזיקה יהודית וחסידית", "jewish"),
     ("טראנס ישראלי", "psytrance"),
+    ("ישראלי קלאסי", "israeli classic"),
 ]
 WORLD_GENRES = [
     ("פופ", "pop"), ("רוק", "rock"), ("היפ הופ", "hip hop"), ("R&B", "r&b"),
