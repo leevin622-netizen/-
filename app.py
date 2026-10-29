@@ -15,6 +15,8 @@ import ratelimit
 import themes
 from i18n import _, LANGS, lang, text_dir, translate_js
 from translations import TRANSLATIONS
+import build_playlists
+import catalog
 import favourites
 import json
 from urllib.parse import urlencode, urlsplit
@@ -189,6 +191,18 @@ details.card summary { cursor: pointer; font-weight: 600; }
   border-radius: 16px; padding: 20px; margin-bottom: 16px;
 }
 .wide { max-width: 1180px; }
+.list.cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 6px; }
+.list.cols li { margin: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.chip {
+  padding: 8px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--card);
+  color: var(--text); font-size: 15px; font-family: inherit; cursor: pointer;
+}
+.chip[aria-pressed=true] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+.pl-card[hidden] { display: none; }
+.pl-card .rank { color: var(--soft); font-size: 14px; min-width: 2.2em; text-align: center; flex: none; }
+.pl-card .btn { width: auto; padding: 8px 14px; font-size: 14px; flex: none; }
+.pl-card .title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .stats div { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px 18px; flex: 1; min-width: 130px; }
 .stats b { display: block; font-size: 26px; line-height: 1.2; }
@@ -1134,7 +1148,7 @@ def home():
         + "</span></div>"
         + '<div class="menu">'
         + onboarding_card
-        + _("<a href=\"/build\">✨ צור פלייליסט חדש<small>לפי ז'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a><a href=\"/saved-tracks\">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם השמעת קטעים ומיון לפי אמן, תאריך ועוד</small></a><a href=\"/my-artists\">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a><a href=\"/stats\">📊 הסטטיסטיקות שלי<small>ז'אנרים, עשורים, אמנים מובילים וכרטיס לשיתוף</small></a><a href=\"/my-playlists\">🛠 הפלייליסטים שיצרתי<small>שינוי שם, הסרת שירים וסידור</small></a></div><p class=\"note\">הנתונים נשמרים לכמה שעות כדי שהאפליקציה תהיה מהירה. <a href=\"/refresh\">רענון נתונים מספוטיפיי</a></p><form method=\"post\" action=\"/delete-data\" class=\"card\" onsubmit=\"return confirm('למחוק מהשרת את הנתונים ששמורים עליכם? חשבון הספוטיפיי שלכם לא ישתנה.')\"><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><p class=\"note\">הנתונים שנשמרו בשרת: הספרייה ושירים שאהבתם, כדי שהאפליקציה תהיה מהירה. מחיקה כאן לא משנה שום דבר בספוטיפיי.</p><button class=\"btn secondary\" type=\"submit\">מחיקת הנתונים שלי מהשרת</button></form>", a0=csrf_token())
+        + _("<a href=\"/build\">✨ צור פלייליסט חדש<small>לפי ז'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a><a href=\"/saved-tracks\">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם השמעת קטעים ומיון לפי אמן, תאריך ועוד</small></a><a href=\"/my-artists\">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a><a href=\"/stats\">📊 הסטטיסטיקות שלי<small>ז'אנרים, עשורים, אמנים מובילים וכרטיס לשיתוף</small></a><a href=\"/existing-playlists\">📚 פלייליסטים קיימים<small>הפלייליסטים הגדולים בספוטיפיי בארצות הברית ובישראל, עם סינון לפי קטגוריות</small></a><a href=\"/my-playlists\">🛠 הפלייליסטים שיצרתי<small>שינוי שם, הסרת שירים וסידור</small></a></div><p class=\"note\">הנתונים נשמרים לכמה שעות כדי שהאפליקציה תהיה מהירה. <a href=\"/refresh\">רענון נתונים מספוטיפיי</a></p><form method=\"post\" action=\"/delete-data\" class=\"card\" onsubmit=\"return confirm('למחוק מהשרת את הנתונים ששמורים עליכם? חשבון הספוטיפיי שלכם לא ישתנה.')\"><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><p class=\"note\">הנתונים שנשמרו בשרת: הספרייה ושירים שאהבתם, כדי שהאפליקציה תהיה מהירה. מחיקה כאן לא משנה שום דבר בספוטיפיי.</p><button class=\"btn secondary\" type=\"submit\">מחיקת הנתונים שלי מהשרת</button></form>", a0=csrf_token())
     )
 
 
@@ -1543,6 +1557,146 @@ def parse_position(value, total):
     return position if 0 <= position < total else None
 
 
+CATALOG_JS = """
+(function () {
+  var T = __T__;
+  var cards = [].slice.call(document.querySelectorAll('.pl-card'));
+  var count = document.getElementById('pl-count'), more = document.getElementById('pl-more');
+  var box = document.getElementById('pl-search');
+  var state = {cat: '', market: '', shown: 60};
+  function match(card) {
+    var q = box.value.trim().toLowerCase();
+    return (!state.cat || card.dataset.cats.split(' ').indexOf(state.cat) >= 0)
+      && (!state.market || card.dataset.markets.split(' ').indexOf(state.market) >= 0)
+      && (!q || card.dataset.name.indexOf(q) >= 0);
+  }
+  function render() {
+    var total = 0, visible = 0;
+    cards.forEach(function (card) {
+      var ok = match(card);
+      if (ok) total++;
+      var show = ok && visible < state.shown;
+      if (show) visible++;
+      card.hidden = !show;
+    });
+    count.textContent = T.count.replace('{a}', visible).replace('{b}', total);
+    more.hidden = visible >= total;
+  }
+  function pick(group, key) {
+    [].forEach.call(document.querySelectorAll('[data-group="' + group + '"]'), function (chip) {
+      chip.setAttribute('aria-pressed', chip.dataset.value === state[key] ? 'true' : 'false');
+    });
+  }
+  [].forEach.call(document.querySelectorAll('.chip'), function (chip) {
+    chip.addEventListener('click', function () {
+      var key = chip.dataset.group === 'cat' ? 'cat' : 'market';
+      state[key] = chip.dataset.value;
+      state.shown = 60;
+      pick(chip.dataset.group, key);
+      render();
+    });
+  });
+  box.addEventListener('input', function () { state.shown = 60; render(); });
+  more.addEventListener('click', function () { state.shown += 60; render(); });
+  document.getElementById('pl-grid').addEventListener('click', function (event) {
+    var button = event.target.closest('.add');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    var data = new FormData();
+    data.append('csrf', document.getElementById('pl-grid').dataset.csrf);
+    data.append('id', button.dataset.id);
+    fetch('/existing-playlists/follow', {method: 'POST', body: data})
+      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (r.ok) { button.textContent = T.added; } else { button.disabled = false; alert(T.failed); }
+      })
+      .catch(function () { button.disabled = false; alert(T.failed); });
+  });
+  render();
+})();
+"""
+
+MARKET_CHIPS = [("", "הכול"), ("US", "🇺🇸 ארצות הברית"), ("IL", "🇮🇱 ישראל (יוצרים ישראלים)")]
+
+
+def catalog_card(rank, item):
+    pid = escape(item["id"])
+    followers = _("{a0} עוקבים", a0=catalog.short_number(item["followers"] or 0))
+    return (
+        f'<li class="pl-card" data-cats="{escape(" ".join(item["categories"]))}" '
+        f'data-markets="{escape(" ".join(item["markets"]))}" data-name="{escape(item["name"].lower())}">'
+        f'<span class="rank">{rank}</span>{cover(item["image"])}<div class="info">'
+        f'<div class="title"><a class="sp" href="https://open.spotify.com/playlist/{pid}" target="_blank" rel="noopener">{escape(item["name"])}</a></div>'
+        f'<div class="sub">{escape(item["owner"] or "")}</div><div class="sub">👥 {followers}</div></div>'
+        + _('<button type="button" class="btn secondary add" data-id="{a0}">➕ לספרייה</button></li>', a0=pid)
+    )
+
+
+@app.route("/existing-playlists")
+def existing_playlists():
+    sp = get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    # קטלוג ריק או ישן משבוע מתעדכן ברקע (אם עדכון כבר רץ, זה לא עושה כלום)
+    build_playlists.refresh_in_background()
+    items = catalog.load()
+    back = _('<p><a href="/">חזרה לדף הבית</a></p>')
+    if not items:
+        return page(
+            _("<h1>פלייליסטים קיימים</h1>")
+            + _('<p class="note">הקטלוג נבנה ברקע ויתמלא בהדרגה. אם ספוטיפיי מגביל את הבקשות, הבנייה תמשיך אוטומטית כשהמגבלה תיגמר. נסו שוב בעוד כמה דקות.</p>')
+            + back,
+            title=_("פלייליסטים קיימים"),
+        )
+    updating = (
+        _('<p class="note">הקטלוג מתעדכן ברקע ויתמלא בהדרגה. רעננו את העמוד בעוד כמה דקות.</p>')
+        if build_playlists.is_running() or catalog.needs_refresh() else ""
+    )
+    per_category = Counter(c for item in items for c in item["categories"])
+    chip = '<button type="button" class="chip" data-group="{g}" data-value="{v}" aria-pressed="{p}">{t}</button>'
+    category_chips = chip.format(g="cat", v="", p="true", t=escape(_("הכול"))) + "".join(
+        chip.format(g="cat", v=key, p="false", t=f"{escape(_(label))} ({per_category[key]})")
+        for key, label, _terms in catalog.CATEGORIES if per_category[key]
+    )
+    market_chips = "".join(
+        chip.format(g="market", v=value, p="false" if value else "true", t=escape(_(label)))
+        for value, label in MARKET_CHIPS
+    )
+    cards = "".join(catalog_card(rank, item) for rank, item in enumerate(items, 1))
+    texts = {
+        "count": _("מוצגים {a} מתוך {b}"), "added": _("✓ נוסף"),
+        "failed": _("לא הצלחנו להוסיף את הפלייליסט. נסו שוב."),
+    }
+    return page(
+        _("<h1>פלייליסטים קיימים</h1>")
+        + _('<p class="note">{a0} הפלייליסטים הגדולים בספוטיפיי, מהגדול לקטן לפי מספר העוקבים. "ישראל" הם פלייליסטים שנוצרו ע"י משתמשים ישראלים (עברית בשם או בתיאור), ו"ארצות הברית" כל השאר. ספוטיפיי לא מפרסם מספר השמעות או מדינה של יוצר, ולכן אלה ההערכות הקרובות ביותר.</p>', a0=len(items))
+        + updating
+        + f'<div class="chips" role="group">{market_chips}</div><div class="chips" role="group">{category_chips}</div>'
+        + _('<input type="text" id="pl-search" class="search" placeholder="חיפוש לפי שם פלייליסט" autocomplete="off">')
+        + '<p class="note" id="pl-count"></p>'
+        + f'<ul class="list cols" id="pl-grid" data-csrf="{csrf_token()}">{cards}</ul>'
+        + '<br><button type="button" class="btn secondary" id="pl-more">' + escape(_("הצג עוד")) + "</button>"
+        + back,
+        title=_("פלייליסטים קיימים"), wide=True,
+        script=CATALOG_JS.replace("__T__", json.dumps(texts, ensure_ascii=False)),
+    )
+
+
+@app.route("/existing-playlists/follow", methods=["POST"])
+def follow_catalog_playlist():
+    sp = get_spotify_client()
+    if sp is None:
+        return {"ok": False}, 401
+    playlist_id = request.form.get("id", "")
+    if not favourites.is_spotify_id(playlist_id):
+        return {"ok": False}, 400
+    try:
+        sp.current_user_follow_playlist(playlist_id)
+    except spotipy.SpotifyException:
+        return {"ok": False}, 502
+    return {"ok": True}
+
+
 @app.route("/my-playlists")
 def my_playlists():
     sp = get_spotify_client()
@@ -1612,10 +1766,10 @@ def edit_playlist(playlist_id):
     rows = "".join(playlist_row(playlist_id, i, t, len(tracks), token) for i, t in enumerate(tracks))
     return page(
         _("<h1>{a0}</h1><p class=\"note\">{a1} שירים. הזיזו שירים למעלה ולמטה, או הסירו אותם.</p><form method=\"post\" action=\"/playlist/{a2}/rename\" class=\"toolbar\"><input type=\"hidden\" name=\"csrf\" value=\"{a3}\"><label class=\"field\">שם חדש<input type=\"text\" name=\"name\" value=\"{a4}\" maxlength=\"100\"></label><button class=\"btn secondary\" type=\"submit\">שמירת השם</button></form>", a0=escape(playlist['name']), a1=playlist_size(playlist), a2=escape(playlist_id), a3=token, a4=escape(playlist["name"]))
-        + (f'<ul class="list">{rows}</ul>' if rows else _('<p class="note">הפלייליסט ריק.</p>'))
+        + (f'<ul class="list cols">{rows}</ul>' if rows else _('<p class="note">הפלייליסט ריק.</p>'))
         + _("<form method=\"post\" action=\"/playlist/{a0}/unfollow\" class=\"card\" onsubmit=\"return confirm('להסיר את הפלייליסט מהחשבון שלכם?')\"><input type=\"hidden\" name=\"csrf\" value=\"{a1}\"><p class=\"note\">ספוטיפיי לא מאפשר למחוק פלייליסט לגמרי דרך האפליקציה. הסרה תוציא אותו מהחשבון שלכם.</p><button class=\"btn secondary\" type=\"submit\">הסרה מהחשבון</button></form>", a0=escape(playlist_id), a1=token)
         + _('<p><a href="/my-playlists">לרשימת הפלייליסטים</a></p>'),
-        title=playlist["name"],
+        title=playlist["name"], wide=True,
     )
 
 
@@ -1932,6 +2086,11 @@ def save():
         _("<div class=\"success\"><h1>הפלייליסט נשמר! 🎉</h1><p>{a0}, {a1} שירים.</p><a class=\"btn\" href=\"{a2}\" target=\"_blank\" rel=\"noopener\">פתיחה בספוטיפיי</a></div><p><a href=\"/build\">ליצירת פלייליסט נוסף</a></p>", a0=escape(title), a1=len(uris), a2=escape(url)),
         theme=theme if theme in themes.THEMES else None,
     )
+
+
+# בהפעלה (ובכל פעם שהשרת עולה אחרי עדכון) ממשיכים לבנות את קטלוג הפלייליסטים אם הוא ריק או ישן
+if not os.getenv("PLAYLISTOR_NO_REFRESH"):
+    build_playlists.refresh_in_background()
 
 
 if __name__ == "__main__":
