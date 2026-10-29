@@ -145,7 +145,8 @@ def passes_language(track, language):
     if language == "אנגלית":
         # שם השיר קובע, ושם האמן רק לא אמור להיות בעברית
         return is_english(track["name"]) and not is_hebrew(text)
-    return True
+    # "ביחד": רק עברית או אנגלית, בלי שירים בשפות אחרות
+    return is_hebrew(text) or is_english(track["name"])
 
 
 def album_year(track):

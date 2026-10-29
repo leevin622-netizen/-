@@ -250,6 +250,8 @@ textarea.copy {
   width: 100%; min-height: 200px; margin: 0 0 12px; padding: 12px 14px; font-size: 15px; line-height: 1.7; font-family: inherit;
   background: var(--field); color: var(--text); border: 1px solid var(--border); border-radius: 12px; resize: vertical;
 }
+#playlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 6px; }
+#playlist li { margin: 0; }
 .list.numbered { counter-reset: song; }
 .list.numbered li { counter-increment: song; }
 .list.numbered li::before {
@@ -1886,7 +1888,7 @@ def render_preview(tracks, token, criteria, title, names, requested=None):
         + short
         + 
         _("<p class=\"note\">בטלו את הסימון בשירים שלא מתאימים, העבירו שירים למעלה ולמטה, ואז שמרו. לחיצה על ▶ משמיעה קטע מהשיר. אם אין קטע קצר, נפתח נגן ספוטיפיי של השיר בתחתית המסך. לחיצה על שם השיר פותחת אותו בספוטיפיי.</p><form method=\"post\" action=\"/save\"><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><input type=\"hidden\" name=\"theme\" value=\"{a1}\"><input type=\"hidden\" name=\"preview\" value=\"{a2}\"><div class=\"toolbar\"><label class=\"field\">שם הפלייליסט<input type=\"text\" id=\"title\" name=\"title\" value=\"{a3}\" maxlength=\"100\"></label><button type=\"button\" class=\"btn secondary\" id=\"other-name\" data-names=\"{a4}\">🔄 שם אחר</button></div><div class=\"toolbar\"><label class=\"field\">מיון<select id=\"sort\"><option value=\"\">הסדר המקורי</option><option value=\"name\">שם השיר</option><option value=\"artist\">שם האמן</option><option value=\"duration\">אורך</option><option value=\"year\">שנת יציאה (הישנים קודם)</option><option value=\"bpm\">קצב (BPM)</option><option value=\"energy\">אנרגיה</option><option value=\"valence\">שמחה</option></select></label><button type=\"button\" class=\"btn secondary\" id=\"shuffle\">🔀 ערבב</button></div><ul class=\"list numbered\" id=\"playlist\">{a5}</ul><br><div class=\"toolbar\"><button class=\"btn\" type=\"submit\">שמור בספוטיפיי</button><button class=\"btn secondary\" type=\"submit\" formaction=\"/build/more\">➕ הוסף עוד {a6} שירים</button></div></form><p><a href=\"/build\">התחלה מחדש</a></p>", a0=csrf_token(), a1=escape(theme or ""), a2=escape(token), a3=escape(title), a4=escape(json.dumps(names, ensure_ascii=False)), a5=rows, a6=EXTRA_TRACKS),
-        theme=theme, images=covers or None, script=NAME_JS + SORT_JS + LAZY_PLAY_JS,
+        wide=True, theme=theme, images=covers or None, script=NAME_JS + SORT_JS + LAZY_PLAY_JS,
     )
 
 

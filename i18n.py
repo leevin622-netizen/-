@@ -10,10 +10,6 @@ from translations import TRANSLATIONS
 LANGS = [
     ("he", "עברית", "rtl"),
     ("en", "English", "ltr"),
-    ("es", "Español", "ltr"),
-    ("fr", "Français", "ltr"),
-    ("ar", "العربية", "rtl"),
-    ("ru", "Русский", "ltr"),
 ]
 CODES = {code for code, _name, _dir in LANGS}
 DIRECTION = {code: direction for code, _name, direction in LANGS}
