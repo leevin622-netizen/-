@@ -220,9 +220,10 @@ def select_top():
         db.execute("UPDATE playlists SET selected = 0")
         for israeli in (1, 0):
             rows = db.execute(
-                "SELECT id FROM playlists WHERE followers IS NOT NULL AND israeli = ? AND markets LIKE ? "
-                "ORDER BY followers DESC LIMIT ?",
-                (israeli, '%"IL"%' if israeli else '%"US"%', PER_REGION),
+                # קודם אלה שיש להם עוקבים (מהגדול לקטן), ואחריהם אלה שעוד לא נמשכו, לפי סדר התוצאות בחיפוש
+                "SELECT id FROM playlists WHERE israeli = ? AND markets LIKE ? "
+                "ORDER BY followers IS NULL, followers DESC, rowid LIMIT ?",
+                (israeli, '%' if israeli else '%"US"%', PER_REGION),
             ).fetchall()
             db.executemany("UPDATE playlists SET selected = 1 WHERE id = ?", rows)
     db.close()
@@ -233,7 +234,7 @@ def load():
     db = _connect()
     rows = db.execute(
         "SELECT id, name, owner, image, followers, israeli, categories FROM playlists "
-        "WHERE selected = 1 ORDER BY followers DESC"
+        "WHERE selected = 1 ORDER BY followers IS NULL, followers DESC, rowid"
     ).fetchall()
     db.close()
     return [
