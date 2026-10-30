@@ -7,6 +7,8 @@
 אפשר לעצור באמצע ולהתחיל שוב: מה שכבר נאסף לא נאסף מחדש.
 הבנייה איטית בכוונה (בקשה אחת בכל פעם, עם הפסקה), כי ספוטיפיי חוסם לכמה שעות מי שמציף אותו.
 """
+import json
+import logging
 import os
 import re
 import threading
@@ -23,22 +25,61 @@ import catalog
 RETRIES = 2
 # המתנה ארוכה מזו לא שווה לחכות לה. עוצרים, ואפשר להמשיך אחר כך
 MAX_WAIT_SECONDS = 600
-# הפסקה אחרי כל בקשה: כ-2 בקשות בשנייה לכל היותר
-PAUSE_SECONDS = 0.4
-# אחרי עצירה (למשל בגלל חסימה) האפליקציה לא מנסה שוב לפני שעה
+# הפסקה אחרי כל בקשה: בקשה אחת בשנייה לכל היותר
+PAUSE_SECONDS = 1.0
+# לא יותר מזה בקשות בהרצה אחת. הבנייה מתחלקת על כמה שעות, ולא מגיעה לחסימה
+REQUESTS_PER_RUN = 400
+# אחרי עצירה (חלוקה לשעות, או חסימה) ממשיכים כעבור שעה, או כשהחסימה נגמרת
 RETRY_AFTER_SECONDS = 3600
 
+BLOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache", "spotify_block.json")
+
 _lock = threading.Lock()
-_state = {"running": False, "next_try": 0.0}
+_state = {"running": False}
 
 
 class RateLimited(RuntimeError):
     pass
 
 
+_sent = {"count": 0}
+
+
+class _RetryAfterSpy(logging.Handler):
+    """spotipy כותב את זמן החסימה רק ביומן. תופסים אותו משם כדי לדעת מתי לנסות שוב."""
+    seconds = None
+
+    def emit(self, record):
+        match = re.search(r"after: (\d+) s", record.getMessage())
+        if match:
+            _RetryAfterSpy.seconds = int(match.group(1))
+
+
+logging.getLogger("spotipy.util").addHandler(_RetryAfterSpy())
+
+
+def blocked_until():
+    """מתי החסימה של ספוטיפיי מסתיימת (0 אם אין חסימה ידועה). נשמר בדיסק, ושורד הפעלה מחדש."""
+    try:
+        with open(BLOCK_FILE, encoding="utf-8") as f:
+            return float(json.load(f)["until"])
+    except (OSError, ValueError, KeyError):
+        return 0.0
+
+
+def remember_block(seconds):
+    os.makedirs(os.path.dirname(BLOCK_FILE), exist_ok=True)
+    with open(BLOCK_FILE, "w", encoding="utf-8") as f:
+        json.dump({"until": time.time() + seconds + 60}, f)
+
+
 def with_retry(call):
     """ספוטיפיי מגביל בקשות. מחכים קצת ומנסים שוב. אם ההמתנה ארוכה, עוצרים מיד."""
+    if _sent["count"] >= REQUESTS_PER_RUN:
+        raise RateLimited(f"נשלחו {REQUESTS_PER_RUN} בקשות. ממשיכים בעוד שעה, כדי לא להגיע לחסימה")
     for attempt in range(1, RETRIES + 1):
+        _sent["count"] += 1
+        _RetryAfterSpy.seconds = None
         try:
             result = call()
             time.sleep(PAUSE_SECONDS)
@@ -46,11 +87,12 @@ def with_retry(call):
         except SpotifyException as error:
             if error.http_status != 429:
                 raise
-            # ספוטיפיי כותב כמה לחכות בכותרת Retry-After (או בהודעה)
+            # ספוטיפיי כותב כמה לחכות בכותרת Retry-After. כש-spotipy מוותר בעצמו, המספר נמצא רק ביומן
             header = (getattr(error, "headers", None) or {}).get("Retry-After", "")
-            match = re.search(r"after: (\d+)", str(error))
-            wait = int(header) if str(header).isdigit() else int(match.group(1)) if match else 30 * attempt
+            wait = int(header) if str(header).isdigit() else _RetryAfterSpy.seconds or 30 * attempt
             if wait > MAX_WAIT_SECONDS:
+                # זוכרים עד מתי חסום, כדי לא לשלוח אף בקשה לפני כן (בקשות בזמן חסימה רק מאריכות אותה)
+                remember_block(wait)
                 raise RateLimited(
                     f"ספוטיפיי הגביל את הבקשות ל-{wait // 60} דקות. הבנייה נעצרה. "
                     "היא תמשיך ממקום העצירה בפעם הבאה"
@@ -112,6 +154,11 @@ def make_client():
 
 def run(sp, log=print):
     """בונה או ממשיך לבנות. מחזיר True כשהקטלוג שלם, False אם נעצר באמצע."""
+    left = blocked_until() - time.time()
+    if left > 0:
+        log(f"ספוטיפיי חוסם עוד {int(left // 60)} דקות. לא שולחים בקשות עד אז")
+        return False
+    _sent["count"] = 0
     catalog.reclassify()
     jobs = catalog.search_jobs()
     log(f"שלב 1: {len(jobs)} חיפושים")
@@ -150,22 +197,32 @@ def is_running():
 
 
 def refresh_in_background():
-    """מתחיל עדכון ברקע אם הקטלוג ריק או ישן, ואין עדכון שכבר רץ. בטוח לקרוא שוב ושוב."""
-    if time.time() < _state["next_try"] or not catalog.needs_refresh():
+    """
+    מתחיל עדכון ברקע אם הקטלוג ריק או ישן, ואין עדכון שכבר רץ. בטוח לקרוא שוב ושוב.
+    העדכון ממשיך לבד עד הסוף: אחרי כל עצירה הוא ממתין (שעה, או עד סוף החסימה) וממשיך, בלי שמישהו ייכנס לדף.
+    """
+    if not catalog.needs_refresh():
         return
     with _lock:
         if _state["running"]:
             return
         _state["running"] = True
 
+    def log(text):
+        print(f"[קטלוג] {text}", flush=True)
+
     def work():
         try:
-            finished = run(make_client(), log=lambda text: print(f"[קטלוג] {text}", flush=True))
-            if not finished:
-                _state["next_try"] = time.time() + RETRY_AFTER_SECONDS
-        except Exception as error:  # עדכון ברקע לא אמור להפיל את האפליקציה
-            print(f"[קטלוג] העדכון נכשל: {error}", flush=True)
-            _state["next_try"] = time.time() + RETRY_AFTER_SECONDS
+            while True:
+                time.sleep(max(0.0, blocked_until() - time.time()))
+                try:
+                    if run(make_client(), log=log):
+                        return
+                except Exception as error:  # עדכון ברקע לא אמור להפיל את האפליקציה
+                    log(f"העדכון נכשל: {error}")
+                wait = max(RETRY_AFTER_SECONDS, blocked_until() - time.time())
+                log(f"ממשיכים בעוד {int(wait // 60)} דקות")
+                time.sleep(wait)
         finally:
             _state["running"] = False
 

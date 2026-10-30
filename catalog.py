@@ -183,10 +183,11 @@ def reclassify():
 
 
 def without_followers():
-    """פלייליסטים בלי מספר עוקבים, או עם מספר ישן משבוע."""
+    """פלייליסטים בלי מספר עוקבים, או עם מספר ישן משבוע. הישראלים קודם, כי שם חסר הכי הרבה."""
     db = _connect()
     ids = [r[0] for r in db.execute(
-        "SELECT id FROM playlists WHERE followers IS NULL OR followers_at IS NULL OR followers_at < ?",
+        "SELECT id FROM playlists WHERE followers IS NULL OR followers_at IS NULL OR followers_at < ? "
+        "ORDER BY israeli DESC, rowid",
         (time.time() - MAX_AGE_SECONDS,),
     )]
     db.close()
