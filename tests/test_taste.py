@@ -1,7 +1,7 @@
 """התאמה אישית לפי הז'אנרים שהמשתמש הכי שומע."""
 import pytest
 
-import app as app_module
+import web
 import catalog
 import engine
 import taste
@@ -12,7 +12,7 @@ TASTE = {"theme": "default", "images": [], "genres": {"israeli pop": 50, "rock":
 
 @pytest.fixture
 def with_taste(logged_in, monkeypatch):
-    monkeypatch.setattr(app_module, "auto_vibe", lambda: TASTE)
+    monkeypatch.setattr(web, "auto_vibe", lambda: TASTE)
     return logged_in
 
 

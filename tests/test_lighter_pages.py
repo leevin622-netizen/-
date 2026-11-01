@@ -1,7 +1,7 @@
 """פלייליסטים קיימים בחלקים של 60, דחיסת העמודים, ואסימון טפסים שמשתנה בכל עמוד."""
 import gzip
 
-import app as app_module
+import routes_catalog
 import catalog
 
 
@@ -17,7 +17,7 @@ def test_page_sends_only_first_cards(logged_in):
     client, _sp, _csrf = logged_in
     fill()
     html = client.get("/existing-playlists").get_data(as_text=True)
-    assert html.count('class="pl-card"') == app_module.CATALOG_PAGE
+    assert html.count('class="pl-card"') == routes_catalog.CATALOG_PAGE
     assert 'data-total="200"' in html and 'data-shown="60"' in html
 
 
@@ -83,3 +83,14 @@ def test_tampered_token_rejected(logged_in):
     tampered = token[:-2] + ("00" if token[-2:] != "00" else "11")
     assert client.post("/lang", data={"csrf": tampered, "lang": "en"}).status_code == 400
     assert client.post("/lang", data={"csrf": "abc", "lang": "en"}).status_code == 400
+
+
+def test_stylesheet_is_a_cached_file(client):
+    import web
+    html = client.get("/").get_data(as_text=True)
+    link = f"/static/style.css?v={web.STYLE_VERSION}"
+    assert link in html
+    assert "<style>" not in html.split("</head>")[0].split(link)[0]
+    response = client.get(link)
+    assert response.status_code == 200 and b".wrap" in response.data
+    assert response.cache_control.max_age >= 30 * 24 * 3600

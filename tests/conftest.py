@@ -19,6 +19,9 @@ os.environ.setdefault("SPOTIFY_CLIENT_SECRET", "test-secret")
 os.environ.setdefault("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:5000/callback")
 
 import app as app_module  # noqa: E402
+import routes_build  # noqa: E402
+import routes_home  # noqa: E402
+import web  # noqa: E402
 import build_playlists  # noqa: E402
 import catalog  # noqa: E402
 import engine  # noqa: E402
@@ -46,13 +49,15 @@ def temp_cache(tmp_path, monkeypatch):
     # מטמונים בזיכרון שנשארים בין בדיקות
     monkeypatch.setattr(library, "_cache", {})
     monkeypatch.setattr(vibes, "_cache", None)
-    monkeypatch.setattr(app_module, "_login_cache", {"until": 0.0, "images": []})
-    monkeypatch.setattr(app_module, "_previews", {})
+    monkeypatch.setattr(web, "_login_cache", {"until": 0.0, "images": []})
+    monkeypatch.setattr(routes_build, "_previews", {})
     ratelimit._hits.clear()
     build_playlists._sent["count"] = 0
     # בלי נתוני אווירה (ReccoBeats): הסינון לפי אווירה פשוט לא משנה כלום
     monkeypatch.setattr(engine, "get_features", lambda ids: {})
-    monkeypatch.setattr(app_module, "get_features", lambda ids: {})
+    for module in list(sys.modules.values()):
+        if getattr(module, "__file__", "") and module.__file__.startswith(ROOT) and hasattr(module, "get_features"):
+            monkeypatch.setattr(module, "get_features", lambda ids: {})
 
 
 PLAYLIST_ID = "myplaylist" + "0" * 12
@@ -149,12 +154,12 @@ def client():
 @pytest.fixture
 def logged_in(client, fake_sp, monkeypatch):
     """לקוח מחובר, עם ספוטיפיי מזויף. מחזיר (client, fake_sp, csrf)."""
-    monkeypatch.setattr(app_module, "get_spotify_client", lambda: fake_sp)
-    monkeypatch.setattr(app_module, "wants_favourites", lambda sp: False)
-    monkeypatch.setattr(app_module, "auto_vibe", lambda: {"theme": "default", "images": []})
+    monkeypatch.setattr(web, "get_spotify_client", lambda: fake_sp)
+    monkeypatch.setattr(routes_home, "wants_favourites", lambda sp: False)
+    monkeypatch.setattr(web, "auto_vibe", lambda: {"theme": "default", "images": []})
     with client.session_transaction() as s:
         s["token_info"] = {"access_token": "x"}
-        s["scope"] = app_module.SCOPE
+        s["scope"] = web.SCOPE
         s["user_id"] = "tester"
         s["csrf"] = "test-csrf"
         s["lang"] = "he"
