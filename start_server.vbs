@@ -19,7 +19,8 @@ If Not fso.FolderExists(folder & "\logs") Then fso.CreateFolder(folder & "\logs"
 
 ' waitress is a production WSGI server, steadier than the Flask development server.
 ' It listens on 127.0.0.1 only, so other computers on the network cannot reach it directly.
+' 8 threads: a page that waits for Spotify (up to 10 seconds) does not hold up everyone else.
 ' set "NAME=value" form: a plain "set NAME=value &&" would keep the space before && in the value
 command = "cmd /c cd /d """ & folder & """ && set ""PYTHONUTF8=1"" && """ & python & """" & _
-          " -m waitress --listen=127.0.0.1:5000 app:app >> logs\server.log 2>&1"
+          " -m waitress --listen=127.0.0.1:5000 --threads=8 app:app >> logs\server.log 2>&1"
 shell.Run command, 0, False

@@ -374,4 +374,6 @@ TRANSLATIONS = {
     '⚙️ אפשרויות נוספות': {'en': '⚙️ More options'},
     'אירוע, מקור השירים, שפה, עשורים וכמות': {'en': 'Occasion, song source, language, decades and count'},
     'לא הצלחנו לשמור את השינוי. הדף ייטען מחדש.': {'en': 'We could not save the change. The page will reload.'},
+    '<h1>הדף לא נמצא</h1><p class="note">אולי הקישור ישן או שיש בו טעות. <a href="/">חזרה לדף הבית</a></p>': {'en': '<h1>Page not found</h1><p class="note">The link may be old or mistyped. <a href="/">Back to the home page</a></p>'},
+    '<h1>משהו השתבש</h1><p class="note">קרתה תקלה אצלנו. נסו שוב בעוד רגע, או <a href="/">חזרו לדף הבית</a>.</p>': {'en': '<h1>Something went wrong</h1><p class="note">We hit a problem. Try again in a moment, or <a href="/">go back to the home page</a>.</p>'},
 }

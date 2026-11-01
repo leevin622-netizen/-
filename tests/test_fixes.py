@@ -142,3 +142,36 @@ def test_playlist_edit_without_script_still_redirects(logged_in):
     client, _sp, csrf = logged_in
     response = client.post(f"/playlist/{PLAYLIST_ID}/move", data={"csrf": csrf, "position": "1", "direction": "down"})
     assert response.status_code == 302 and response.headers["Location"] == f"/playlist/{PLAYLIST_ID}"
+
+
+def test_missing_page_is_styled_and_translated(logged_in):
+    client, _sp, csrf = logged_in
+    response = client.get("/no-such-page")
+    assert response.status_code == 404
+    html = response.get_data(as_text=True)
+    assert "הדף לא נמצא" in html and "/static/style.css" in html
+    client.post("/lang", data={"csrf": csrf, "lang": "en"})
+    assert "Page not found" in client.get("/no-such-page").get_data(as_text=True)
+
+
+def test_wrong_method_goes_home(client):
+    response = client.get("/save")
+    assert response.status_code == 302 and response.headers["Location"] == "/"
+
+
+def test_server_error_page(logged_in, monkeypatch):
+    import app as app_module
+    client, _sp, _csrf = logged_in
+    monkeypatch.setitem(app_module.app.config, "PROPAGATE_EXCEPTIONS", False)
+    monkeypatch.setitem(app_module.app.view_functions, "my_stats", lambda: 1 / 0)
+    response = client.get("/stats")
+    assert response.status_code == 500
+    assert "משהו השתבש" in response.get_data(as_text=True)
+
+
+def test_preview_lookups_are_limited(logged_in, monkeypatch):
+    import routes_library
+    client, _sp, _csrf = logged_in
+    monkeypatch.setattr(routes_library, "preview_url", lambda artist, title: "")
+    codes = [client.get("/preview?artist=a&title=b").status_code for _ in range(61)]
+    assert codes[:60] == [200] * 60 and codes[60] == 429

@@ -99,6 +99,8 @@ RATE_LIMITS = {
     ("POST", "/build"): ("build", 20, 60),
     ("POST", "/build/more"): ("build", 20, 60),
     ("POST", "/save"): ("save", 10, 60),
+    # כל ▶ שולח עד 3 בקשות החוצה (Deezer ו-iTunes)
+    ("GET", "/preview"): ("preview", 60, 60),
     ("GET", "/login"): ("login", 20, 600),
     ("GET", "/callback"): ("login", 20, 600),
 }
@@ -666,6 +668,26 @@ def spotify_error(error):
 @app.errorhandler(requests.RequestException)
 def network_error(error):
     return page(_("<p>אין חיבור לספוטיפיי כרגע. בדקו את החיבור לאינטרנט ונסו שוב.</p>")), 503
+
+
+@app.errorhandler(404)
+def not_found(error):
+    return page(_('<h1>הדף לא נמצא</h1><p class="note">אולי הקישור ישן או שיש בו טעות. <a href="/">חזרה לדף הבית</a></p>')), 404
+
+
+@app.errorhandler(405)
+def wrong_method(error):
+    # למשל רענון של דף שהגיע משליחת טופס
+    return redirect("/")
+
+
+@app.errorhandler(500)
+def server_error(error):
+    """תקלה בקוד. Flask כבר כתב את הפרטים ליומן. אם גם בניית העמוד נכשלת, מחזירים טקסט פשוט."""
+    try:
+        return page(_('<h1>משהו השתבש</h1><p class="note">קרתה תקלה אצלנו. נסו שוב בעוד רגע, או <a href="/">חזרו לדף הבית</a>.</p>')), 500
+    except Exception:
+        return "Playlistor: internal error", 500
 
 
 def vibe_switch():
