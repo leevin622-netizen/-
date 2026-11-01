@@ -213,6 +213,10 @@ fieldset.group.invalid { border-color: #f19a8b; }
 label.check { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; font-size: 16px; }
 label.check input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
 details.card summary { cursor: pointer; font-weight: 600; }
+details.more-options { margin: 0 0 18px; }
+details.more-options summary { cursor: pointer; font-weight: 600; font-size: 16px; padding: 10px 0; }
+details.more-options summary .hint { display: block; color: var(--soft); font-size: 14px; font-weight: 400; }
+details.more-options[open] summary { margin-bottom: 12px; }
 .btn {
   display: inline-block; width: 100%; padding: 14px; border: 0; border-radius: 999px;
   background: var(--accent); color: var(--on-accent); font-size: 17px; font-weight: 700; font-family: inherit;
@@ -537,7 +541,7 @@ BUILD_CHECK_JS = """
     group.classList.add("invalid");
     group.scrollIntoView({ behavior: "smooth", block: "center" });
   });
-  group.addEventListener("change", function () { group.classList.remove("invalid"); box.hidden = true; });
+  form.addEventListener("change", function () { group.classList.remove("invalid"); box.hidden = true; });
 })();
 """
 
@@ -2014,29 +2018,68 @@ def decade_options(first_label):
     )
 
 
+def field(label, control, hint=""):
+    """שדה בטופס: תווית, הסבר קצר (רשות) והפקד עצמו."""
+    hint = f'<span class="hint">{hint}</span>' if hint else ""
+    return f'<label class="field">{label}{hint}{control}</label>'
+
+
+def select(name, choices, first=None):
+    """תפריט. first: אפשרות ריקה בראש התפריט (למשל "ללא")."""
+    empty = f'<option value="">{escape(first)}</option>' if first else ""
+    return f'<select name="{name}">{empty}{choices}</select>'
+
+
 def build_form(error="", genre=""):
     """
-    טופס יצירת פלייליסט. חובה לבחור לפחות אחד מהשלושה: ז'אנר, מצב רוח או אירוע,
-    והם מסומנים יחד בקבוצה אחת עם כוכבית. השאר רשות.
+    טופס יצירת פלייליסט, פשוט ככל האפשר: ז'אנר, מצב רוח וכפתור. כל השאר (אירוע, מקור, שפה, עשורים,
+    כמות ואמנים מועדפים) מקופל תחת "אפשרויות נוספות", עם ברירות מחדל טובות.
+    חובה לבחור לפחות אחד: ז'אנר, מצב רוח או אירוע.
     genre: הז'אנר שמסומן מראש (הז'אנר שהמשתמש הכי שומע).
     """
     req = '<span class="req" aria-hidden="true">*</span>'
+    none = _("ללא")
+    events = "".join(
+        f'<optgroup label="{escape(_(group))}">{options(items.keys())}</optgroup>'
+        for group, items in EVENT_GROUPS.items()
+    )
+    sources = (
+        f'<option value="search">{escape(_("🌍 מכל ספוטיפיי"))}</option>'
+        f'<option value="liked">{escape(_("❤️ רק מהשירים שאהבתי"))}</option>'
+    )
+    must_pick = (
+        f'<fieldset class="group{" invalid" if error else ""}" id="must-pick">'
+        f'<legend>{escape(_("מה מתאים לכם?"))}{req}</legend>'
+        + field(escape(_("🎵 ז'אנר")), f'<select name="genre_choice">{genre_options(genre)}</select>')
+        + field(escape(_("😊 מצב רוח")), select("mood", options(GENRE_HINTS.keys()), none))
+        + "</fieldset>"
+    )
+    more = (
+        '<details class="more-options">'
+        f'<summary>{escape(_("⚙️ אפשרויות נוספות"))}<span class="hint">'
+        f'{escape(_("אירוע, מקור השירים, שפה, עשורים וכמות"))}</span></summary>'
+        + field(escape(_("📍 אירוע או סיטואציה")), select("event", events, none))
+        + field(escape(_("מאיפה לקחת שירים")), f'<select name="source">{sources}</select>')
+        + field(escape(_("🗣 שפה")), select("language", options(LANGUAGES)))
+        + '<div class="toolbar">'
+        + field(escape(_("📅 מעשור")), f'<select name="decade_from">{decade_options(_("כל העשורים"))}</select>')
+        + field(escape(_("עד עשור")), f'<select name="decade_to">{decade_options(_("עד היום"))}</select>')
+        + "</div>"
+        + field(escape(_("כמות שירים")),
+                f'<input name="count" type="number" value="20" min="5" max="{MAX_TRACKS}" required>',
+                escape(_("בין 5 ל-{a0}", a0=MAX_TRACKS)))
+        + f'<label class="check"><input type="checkbox" name="personal" checked> '
+        f'{escape(_("לשלב שירים של האמנים המועדפים עליי"))}</label>'
+        + "</details>"
+    )
     return page(
         _("<h1>צור פלייליסט</h1>")
         + (f'<div class="form-error" role="alert" id="build-error">{escape(error)}</div>' if error
            else '<div class="form-error" role="alert" id="build-error" hidden></div>')
-        + _("<form method=\"post\" class=\"card\" id=\"build-form\" novalidate><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><label class=\"field\">מאיפה לקחת שירים{a1}<select name=\"source\" required><option value=\"search\">🌍 מכל ספוטיפיי</option><option value=\"liked\">❤️ רק מהשירים שאהבתי</option></select></label><fieldset class=\"group{a2}\" id=\"must-pick\"><legend>מה מתאים לכם?{a3}</legend><p class=\"note\" style=\"margin-top:0\">חובה לבחור לפחות אחד מהשלושה.</p><label class=\"field\">🎵 ז'אנר<select name=\"genre_choice\">{a4}</select></label><label class=\"field\">😊 מצב רוח<select name=\"mood\"><option value=\"\">ללא</option>", a0=csrf_token(), a1=req, a2=" invalid" if error else "", a3=req, a4=genre_options(genre))
-        + options(GENRE_HINTS.keys())
-        + _("</select></label>"
-        '<label class="field">📍 אירוע או סיטואציה<select name="event"><option value="">ללא</option>')
-        + "".join(
-            f'<optgroup label="{escape(_(group))}">{options(events.keys())}</optgroup>'
-            for group, events in EVENT_GROUPS.items()
-        )
-        + _("</select></label></fieldset>"
-        '<label class="field">🗣 שפה<select name="language">')
-        + options(LANGUAGES)
-        + _("</select></label><div class=\"toolbar\"><label class=\"field\">📅 מעשור<select name=\"decade_from\">{a0}</select></label><label class=\"field\">עד עשור<select name=\"decade_to\">{a1}</select></label></div><br><label class=\"field\">כמות שירים{a2}<span class=\"hint\">בין 5 ל-{a3}</span><input name=\"count\" type=\"number\" value=\"20\" min=\"5\" max=\"{a4}\" required></label><label class=\"check\"><input type=\"checkbox\" name=\"personal\" checked> לשלב שירים של האמנים המועדפים עליי</label><p class=\"note\"><span class=\"req\">*</span> שדה חובה</p><button class=\"btn\" type=\"submit\">✨ הצג שירים</button></form>", a0=decade_options(_("כל העשורים")), a1=decade_options(_("עד היום")), a2=req, a3=MAX_TRACKS, a4=MAX_TRACKS),
+        + f'<form method="post" class="card" id="build-form" novalidate>'
+        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
+        + must_pick + more
+        + f'<button class="btn" type="submit">{escape(_("✨ הצג שירים"))}</button></form>',
         title=_("צור פלייליסט"), script=BUILD_CHECK_JS.replace("__MESSAGE__", json.dumps(_(MISSING_CHOICE), ensure_ascii=False)),
     )
 

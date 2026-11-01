@@ -102,3 +102,30 @@ def test_language_switch_ignores_unknown_and_external_redirect(logged_in):
     response = client.post("/lang", data={"csrf": csrf, "lang": "fr", "back": "//evil.example"})
     assert response.headers["Location"] == "/"
     assert 'dir="rtl"' in client.get("/build").get_data(as_text=True)
+
+
+def test_build_form_shows_only_genre_mood_and_button(logged_in):
+    client, _sp, _csrf = logged_in
+    html = client.get("/build").get_data(as_text=True)
+    visible, folded = html.split('<details class="more-options">')
+    folded = folded.split("</details>")[0]
+    for name in ("genre_choice", "mood"):
+        assert f'name="{name}"' in visible
+    assert 'type="submit"' in html.split("</details>")[1]
+    for name in ("event", "source", "language", "decade_from", "decade_to", "count", "personal"):
+        assert f'name="{name}"' in folded and f'name="{name}"' not in visible
+
+
+def test_build_with_event_only(logged_in):
+    client, _sp, csrf = logged_in
+    response = client.post("/build", data=build_form(csrf, genre_choice="", event="ריצה", count="10"))
+    assert response.status_code == 200
+    assert response.get_data(as_text=True).count('name="uri"') == 10
+
+
+def test_build_with_defaults_from_folded_options(logged_in):
+    """מי שלא פותח את "אפשרויות נוספות" שולח רק ז'אנר ומצב רוח, ומקבל את ברירות המחדל."""
+    client, _sp, csrf = logged_in
+    form = {"csrf": csrf, "genre_choice": "pop", "mood": "", "event": "", "source": "search",
+            "language": "ביחד", "count": "20", "personal": "on", "decade_from": "", "decade_to": ""}
+    assert client.post("/build", data=form).get_data(as_text=True).count('name="uri"') == 20
