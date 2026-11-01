@@ -385,3 +385,55 @@ EDIT_JS = """
   });
 })();
 """
+
+
+SAVED_JS = """
+(function () {
+  // הטבלה של "כל השירים שאהבתי" נבנית כאן מהנתונים המקוצרים שבעמוד (tracks-data),
+  // במקום לקבל אלפי שורות HTML מוכנות מהשרת. כל שורה: [uri, שם, [[id, אמן]...], id אלבום, אלבום,
+  // תמונה, תאריך הוספה, אורך במילישניות, מקום בדירוג (0 אם אין), תווית הדירוג]
+  var T = __T__;
+  var IMAGE = "https://i.scdn.co/image/", OPEN = "https://open.spotify.com/";
+  var data = JSON.parse(document.getElementById("tracks-data").textContent);
+  function esc(text) {
+    return String(text).replace(/[&<>"']/g, function (c) {
+      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;"}[c];
+    });
+  }
+  function link(text, kind, id, inner) {
+    var content = inner || esc(text);
+    if (!id) return content;
+    return '<a class="sp" href="' + OPEN + kind + "/" + esc(id) + '" target="_blank"' +
+      (text ? "" : ' aria-label="' + esc(T.open) + '"') + ">" + content + "</a>";
+  }
+  function cover(image) {
+    if (!image) return '<div class="noimg"></div>';
+    return '<img src="' + esc(image.indexOf("://") < 0 ? IMAGE + image : image) + '" alt="" loading="lazy">';
+  }
+  function duration(ms) {
+    var s = Math.floor(ms / 1000), r = s % 60;
+    return Math.floor(s / 60) + ":" + (r < 10 ? "0" : "") + r;
+  }
+  function shortDate(d) {
+    return d.length === 10 ? d.slice(8, 10) + "." + d.slice(5, 7) + "." + d.slice(2, 4) : d;
+  }
+  var rows = data.map(function (t) {
+    var uri = t[0], name = t[1], artists = t[2], id = uri.indexOf("spotify:track:") === 0 ? uri.slice(14) : "";
+    var first = artists.length ? artists[0][1] : "";
+    return "<tr><td><input type=\\"checkbox\\" name=\\"uri\\" value=\\"" + esc(uri) + "\\" aria-label=\\"" +
+      esc(T.check.replace("{a0}", name)) + "\\"></td>" +
+      "<td><button type=\\"button\\" class=\\"play\\" data-artist=\\"" + esc(first) + "\\" data-title=\\"" + esc(name) +
+      "\\" data-id=\\"" + esc(id) + "\\" aria-pressed=\\"false\\" aria-label=\\"" + esc(T.play.replace("{a0}", name)) +
+      "\\">▶</button></td>" +
+      "<td>" + link("", "album", t[3], cover(t[5])) + "</td>" +
+      "<td class=\\"name\\">" + link(name, "track", id) + "</td>" +
+      "<td class=\\"short\\">" + artists.map(function (a) { return link(a[1], "artist", a[0]); }).join(", ") + "</td>" +
+      "<td class=\\"short muted\\">" + link(t[4], "album", t[3]) + "</td>" +
+      "<td class=\\"muted\\" data-v=\\"" + esc(t[6]) + "\\">" + esc(shortDate(t[6])) + "</td>" +
+      "<td class=\\"muted\\" data-v=\\"" + t[7] + "\\">" + duration(t[7]) + "</td>" +
+      // בדירוג, מקום 1 הוא הכי טוב, ולכן ממיינים לפי מספר שלילי
+      "<td class=\\"muted\\" data-v=\\"" + (t[8] ? -t[8] : "") + "\\">" + esc(t[9]) + "</td></tr>";
+  });
+  document.getElementById("tracks").tBodies[0].innerHTML = rows.join("");
+})();
+"""

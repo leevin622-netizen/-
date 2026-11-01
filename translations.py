@@ -376,4 +376,8 @@ TRANSLATIONS = {
     'לא הצלחנו לשמור את השינוי. הדף ייטען מחדש.': {'en': 'We could not save the change. The page will reload.'},
     '<h1>הדף לא נמצא</h1><p class="note">אולי הקישור ישן או שיש בו טעות. <a href="/">חזרה לדף הבית</a></p>': {'en': '<h1>Page not found</h1><p class="note">The link may be old or mistyped. <a href="/">Back to the home page</a></p>'},
     '<h1>משהו השתבש</h1><p class="note">קרתה תקלה אצלנו. נסו שוב בעוד רגע, או <a href="/">חזרו לדף הבית</a>.</p>': {'en': '<h1>Something went wrong</h1><p class="note">We hit a problem. Try again in a moment, or <a href="/">go back to the home page</a>.</p>'},
+    'לסמן את {a0}': {'en': 'Select {a0}'},
+    'השמעת קטע מ{a0}': {'en': 'Play a clip of {a0}'},
+    'פתיחה בספוטיפיי': {'en': 'Open in Spotify'},
+    '<noscript><p class="note">כדי לראות את הרשימה צריך לאפשר JavaScript בדפדפן.</p></noscript>': {'en': '<noscript><p class="note">Turn on JavaScript in your browser to see the list.</p></noscript>'},
 }

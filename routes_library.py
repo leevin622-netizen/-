@@ -1,6 +1,7 @@
 """
 הספרייה של המשתמש: השירים שאהבתי, האמנים שאני אוהב, והסטטיסטיקות עם כרטיס השיתוף.
 """
+import json
 import os
 from collections import Counter
 from html import escape
@@ -14,10 +15,10 @@ from previews import preview_url
 from engine import to_result, album_year
 import web
 from web import (
-    GENRE_NAMES, app, artist_links, cell, cover, current_vibe, decade_label, format_duration, format_rank,
-    header, liked_artist_tags, page, play_button, spotify_link, stat_boxes, user_id,
+    GENRE_NAMES, app, cell, cover, current_vibe, decade_label, format_rank, header, liked_artist_tags, page,
+    spotify_link, stat_boxes, user_id,
 )
-from scripts import COPY_JS, LAZY_PLAY_JS, SAVE_CARD_JS, TABLE_JS
+from scripts import COPY_JS, LAZY_PLAY_JS, SAVE_CARD_JS, SAVED_JS, TABLE_JS
 
 
 @app.route("/saved-tracks")
@@ -44,21 +45,13 @@ def saved_tracks():
 
     columns = [("", None), ("", None), ("", None), (_("שיר"), "text"), (_("אמן"), "text"), (_("אלבום"), "text"),
                (_("נוסף"), "text"), (_("אורך"), "num"), (_("דירוג"), "num")]
-    rows = []
-    for t in tracks:
-        added = t["added"]
-        row = (
-            _("<td><input type=\"checkbox\" name=\"uri\" value=\"{a0}\" aria-label=\"לסמן את {a1}\"></td><td>{a2}</td><td>{a3}</td>", a0=escape(t["uri"]), a1=escape(t["name"]), a2=play_button(t), a3=spotify_link('', 'album', t['album_id'], cover(t['image'])))
-            + cell(t["name"], cls="name", html=spotify_link(t["name"], "track", t["id"]))
-            + cell(t["artist"], cls="short", html=artist_links(t))
-            + cell(t["album"], cls="short muted", html=spotify_link(t["album"], "album", t["album_id"]))
-            # התאריך מוצג קצר (31.12.24), והמיון לפי התאריך המלא
-            + cell(f"{added[8:10]}.{added[5:7]}.{added[2:4]}" if len(added) == 10 else added, added, "muted")
-            + cell(format_duration(t["duration"]), t["duration"], "muted")
-            # בדירוג, מקום 1 הוא הכי טוב, ולכן ממיינים לפי מספר שלילי
-            + cell(format_rank(t["rank"]), -t["rank"][0] if t["rank"] else "", "muted")
-        )
-        rows.append(f"<tr>{row}</tr>")
+    # הטבלה נבנית בדפדפן (SAVED_JS) מהנתונים המקוצרים: פי 4 פחות מאשר שורות HTML מוכנות
+    rows = [
+        [t["uri"], t["name"], t["artists"], t["album_id"] or "", t["album"], short_image(t["image"]),
+         t["added"], t["duration"], t["rank"][0] if t["rank"] else 0, format_rank(t["rank"])]
+        for t in tracks
+    ]
+    texts = {"check": _("לסמן את {a0}"), "play": _("השמעת קטע מ{a0}"), "open": _("פתיחה בספוטיפיי")}
 
     artists_count = len({a for t in tracks for a, _name in t["artists"]})
     total_hours = sum(t["duration"] for t in tracks) / 3_600_000
@@ -81,10 +74,26 @@ def saved_tracks():
         + _('<p class="note">טיפ: חפשו אמן או אלבום, לחצו "סמן את כל המוצגים", ואז "צור פלייליסט". ')
         + _('לפלייליסט לפי ז\'אנר או מצב רוח מתוך השירים שאהבתם, השתמשו ב<a href="/build">יצירת פלייליסט</a>.</p>')
         + f'<div class="table-wrap"><table id="tracks" class="sortable numbered"><thead>{header(columns)}</thead>'
-        + f'<tbody>{"".join(rows)}</tbody></table></div>'
-        + "</form>",
-        title=_("כל השירים שאהבתי"), wide=True, script=TABLE_JS + LAZY_PLAY_JS,
+        + "<tbody></tbody></table></div>"
+        + _('<noscript><p class="note">כדי לראות את הרשימה צריך לאפשר JavaScript בדפדפן.</p></noscript>')
+        + "</form>"
+        + f'<script type="application/json" id="tracks-data">{json_for_page(rows)}</script>',
+        title=_("כל השירים שאהבתי"), wide=True,
+        script=SAVED_JS.replace("__T__", json.dumps(texts, ensure_ascii=False)) + TABLE_JS + LAZY_PLAY_JS,
     )
+
+
+SPOTIFY_IMAGES = "https://i.scdn.co/image/"
+
+
+def short_image(url):
+    """כתובת תמונה של ספוטיפיי בלי ההתחלה הקבועה (SAVED_JS מוסיף אותה בחזרה)."""
+    return url[len(SPOTIFY_IMAGES):] if url.startswith(SPOTIFY_IMAGES) else url
+
+
+def json_for_page(value):
+    """JSON שאפשר לשים בתוך תגית script בעמוד: "</" היה סוגר את התגית באמצע."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
 
 
 @app.route("/preview")

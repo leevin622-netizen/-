@@ -94,3 +94,16 @@ def test_stylesheet_is_a_cached_file(client):
     response = client.get(link)
     assert response.status_code == 200 and b".wrap" in response.data
     assert response.cache_control.max_age >= 30 * 24 * 3600
+
+
+def test_liked_songs_sent_as_compact_data(logged_in):
+    import json
+    client, sp, _csrf = logged_in
+    sp.tracks[0]["name"] = "</script><b>x"
+    html = client.get("/saved-tracks").get_data(as_text=True)
+    assert "<tbody></tbody>" in html
+    raw = html.split('<script type="application/json" id="tracks-data">')[1].split("</script>")[0]
+    data = json.loads(raw)
+    assert len(data) == len(sp.tracks)
+    assert data[0][0].startswith("spotify:track:") and data[0][1] == "</script><b>x"
+    assert "</script><b>" not in raw
