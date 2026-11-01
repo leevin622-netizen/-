@@ -26,6 +26,7 @@ import build_playlists  # noqa: E402
 import catalog  # noqa: E402
 import engine  # noqa: E402
 import index_store  # noqa: E402
+import lastfm  # noqa: E402
 import library  # noqa: E402
 import ratelimit  # noqa: E402
 import vibes  # noqa: E402
@@ -44,6 +45,8 @@ def temp_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(index_store, "DB_FILE", str(tmp_path / "index.sqlite"))
     monkeypatch.setattr(library, "CACHE_DIR", str(tmp_path))
     monkeypatch.setattr(vibes, "CACHE_FILE", str(tmp_path / "features.json"))
+    monkeypatch.setattr(lastfm, "TAGS_FILE", str(tmp_path / "lastfm_tags.json"))
+    monkeypatch.setattr(lastfm, "_tags_cache", None)
     monkeypatch.setattr(build_playlists, "BLOCK_FILE", str(tmp_path / "spotify_block.json"))
     monkeypatch.setattr(build_playlists, "PAUSE_SECONDS", 0)
     # מטמונים בזיכרון שנשארים בין בדיקות

@@ -2,6 +2,7 @@
 דף הבית, "בשבילך", התחברות והתנתקות, שפה ועיצוב, מחיקת נתונים, ובחירת אמנים ושירים אהובים.
 """
 import secrets
+import time
 from html import escape
 from flask import redirect, request, session
 import requests
@@ -17,7 +18,7 @@ import web
 import routes_build
 from web import (
     RELOGIN_NOTE, SCOPE, app, artist_links, cover, csrf_token, current_vibe, login_images, make_auth,
-    my_genres, page, spotify_link, stat_boxes, user_id,
+    back_from_referrer, local_path, my_genres, page, spotify_link, stat_boxes, user_client, user_id,
 )
 
 
@@ -25,10 +26,7 @@ from web import (
 def set_lang():
     code = request.form.get("lang", "he")
     session["lang"] = code if code in {c for c, _n, _d in LANGS} else "he"
-    back = request.form.get("back", "/")
-    if not (back.startswith("/") and back[1:2] not in ("/", "\\") and back.isprintable()):
-        back = "/"
-    return redirect(back)
+    return redirect(local_path(request.form.get("back")))
 
 
 @app.route("/vibe", methods=["POST"])
@@ -39,11 +37,7 @@ def set_vibe():
         session["vibe_choice"] = choice
     else:
         session.pop("vibe_choice", None)
-    back = request.form.get("back", "/")
-    # רק כתובת מהאתר הזה. "//" או "/\" היו שולחים לאתר אחר
-    if not (back.startswith("/") and back[1:2] not in ("/", "\\") and back.isprintable()):
-        back = "/"
-    return redirect(back)
+    return redirect(local_path(request.form.get("back")))
 
 
 def wants_favourites(sp):
@@ -250,12 +244,18 @@ def login():
     return redirect(make_auth().get_authorize_url(state=state))
 
 
+# רענון מלא שולח הרבה בקשות לספוטיפיי, שהמכסה שלו משותפת לכל האתר. לכן פעם ב-10 דקות לכל היותר
+REFRESH_SECONDS = 10 * 60
+
+
 @app.route("/refresh")
 def refresh():
     """טוען מחדש מספוטיפיי את השירים, האמנים והסגנון (למשל אחרי שאהבת שירים חדשים)."""
-    if session.get("user_id"):
+    now = time.time()
+    if session.get("user_id") and now - session.get("refreshed_at", 0) > REFRESH_SECONDS:
         library.clear_cache(session["user_id"])
-    return redirect(request.referrer or "/")
+        session["refreshed_at"] = now
+    return redirect(back_from_referrer())
 
 
 @app.route("/logout")
@@ -289,8 +289,7 @@ def callback():
     except SpotifyOauthError:
         return page(_('<p>ההתחברות נכשלה. <a href="/login">נסו שוב</a>.</p>')), 400
     session["token_info"] = token_info
-    sp = spotipy.Spotify(auth=token_info["access_token"])
-    user = sp.current_user()
+    user = user_client(token_info["access_token"]).current_user()
     session["user_name"] = user.get("display_name") or ""
     session["user_id"] = user["id"]
     session["scope"] = SCOPE

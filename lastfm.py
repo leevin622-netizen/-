@@ -1,18 +1,50 @@
+import json
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 import requests
 
 LASTFM_URL = "https://ws.audioscrobbler.com/2.0/"
 # אם Last.fm לא עונה תוך כמה שניות, מוותרים על התגיות של האמן הזה
 TIMEOUT_SECONDS = 4
-# תגיות של אמנים שכבר נמצאו, כדי לא לבקש אותן שוב בכל טעינה של העמוד
-_tags_cache = {}
+# תגיות של אמנים שכבר נמצאו, כדי לא לבקש אותן שוב. נשמרות גם בקובץ, כי הן כמעט לא משתנות,
+# וכך אחרי הפעלה מחדש של השרת טעינת הסגנון של המשתמש לא מחכה שוב ל-Last.fm
+TAGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache", "lastfm_tags.json")
+# Last.fm מחזיר את הקוד הזה כשאין אמן כזה. גם זו תשובה ששווה לזכור
+NOT_FOUND = 6
+_tags_cache = None
+_tags_lock = threading.Lock()
+
+
+def _tags():
+    global _tags_cache
+    with _tags_lock:
+        if _tags_cache is None:
+            try:
+                with open(TAGS_FILE, encoding="utf-8") as f:
+                    _tags_cache = json.load(f)
+            except (OSError, ValueError):
+                _tags_cache = {}
+        return _tags_cache
+
+
+def _save_tags():
+    with _tags_lock:
+        # עותק, כי בקשה אחרת יכולה להוסיף תגיות בזמן הכתיבה
+        snapshot = dict(_tags_cache)
+        try:
+            os.makedirs(os.path.dirname(TAGS_FILE), exist_ok=True)
+            with open(TAGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(snapshot, f, ensure_ascii=False)
+        except OSError:
+            pass
 
 
 def get_artist_tags(artist_name, limit=5):
     """מחזיר רשימת תגיות (ז'אנרים) לאמן מ-Last.fm, או רשימה ריקה אם לא נמצא."""
-    if artist_name in _tags_cache:
-        return _tags_cache[artist_name]
+    cache = _tags()
+    if artist_name in cache:
+        return cache[artist_name]
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         return []
@@ -31,17 +63,24 @@ def get_artist_tags(artist_name, limit=5):
         return []
 
     if "error" in data:
+        # אמן שלא קיים ב-Last.fm נזכר כריק. שגיאה אחרת (למשל הגבלה) לא נזכרת, וננסה שוב
+        if data.get("error") == NOT_FOUND:
+            cache[artist_name] = []
         return []
 
     tags = data.get("toptags", {}).get("tag", [])
-    _tags_cache[artist_name] = [tag["name"] for tag in tags[:limit]]
-    return _tags_cache[artist_name]
+    cache[artist_name] = [tag["name"] for tag in tags[:limit]]
+    return cache[artist_name]
 
 
 def get_tags_for_artists(artist_names):
-    """מביא תגיות לכמה אמנים במקביל, במקום אחד אחרי השני."""
+    """מביא תגיות לכמה אמנים במקביל, במקום אחד אחרי השני. תגיות חדשות נשמרות לקובץ."""
+    before = len(_tags())
     with ThreadPoolExecutor(max_workers=20) as pool:
-        return list(pool.map(get_artist_tags, artist_names))
+        found = list(pool.map(get_artist_tags, artist_names))
+    if len(_tags()) != before:
+        _save_tags()
+    return found
 
 
 # אמנים דומים שכבר נמצאו, לפי שם האמן

@@ -22,6 +22,7 @@ import themes
 from i18n import _, LANGS, lang, text_dir, translate_js
 import taste
 import json
+from urllib.parse import urlsplit
 from engine import HEBREW_GENRES, WORLD_GENRES, GENRE_CHOICES
 from vibes import describe
 
@@ -109,7 +110,7 @@ DEFAULT_LIMIT = ("all", 300, 60)
 @app.before_request
 def note_activity():
     """כל ביקור באתר (חוץ מקבצים קבועים) עוצר לכמה דקות את העדכון ברקע, כדי שהמכסה של ספוטיפיי תישאר למשתמשים."""
-    if request.endpoint != "static":
+    if request.endpoint not in ("static", None):
         build_playlists.note_user_activity()
 
 
@@ -207,8 +208,31 @@ def get_spotify_client():
         session["token_info"] = token_info
     # language="he": ספוטיפיי מחזיר שם בעברית לאמנים שיש להם כזה (בעיקר ישראלים),
     # ואמנים מחו"ל נשארים באנגלית. כך אין צורך בבקשה נפרדת לכל אמן.
-    # retries=0: כשספוטיפיי מבקש להמתין שעות, המשתמש מקבל הודעה מיד במקום לחכות
-    return spotipy.Spotify(auth=token_info["access_token"], language="he", retries=0, requests_timeout=10)
+    return user_client(token_info["access_token"])
+
+
+def user_client(access_token):
+    """
+    לקוח ספוטיפיי למשתמש. retries=0: כשספוטיפיי מבקש להמתין שעות, המשתמש מקבל הודעה מיד,
+    ולא נשאר תקוע (ברירת המחדל של spotipy מחכה כמה שספוטיפיי מבקש, גם שעות).
+    """
+    return spotipy.Spotify(auth=access_token, language="he", retries=0, requests_timeout=10)
+
+
+def local_path(value):
+    """כתובת בתוך האתר לחזרה אליה, או "/". "//" או "/\" היו שולחים לאתר אחר."""
+    value = value or ""
+    if value.startswith("/") and value[1:2] not in ("/", "\\") and value.isprintable():
+        return value
+    return "/"
+
+
+def back_from_referrer():
+    """הדף שממנו הגיעו, רק אם הוא באתר הזה. כותרת Referer יכולה להגיע מאתר אחר."""
+    parts = urlsplit(request.referrer or "")
+    if parts.netloc != request.host:
+        return "/"
+    return local_path(parts.path + (f"?{parts.query}" if parts.query else ""))
 
 
 # כמה תמונות של אמנים ועטיפות לשים ברקע
@@ -296,7 +320,8 @@ ISRAELI_SINGERS = [
 ]
 
 
-LOGIN_SECONDS = 6 * 60 * 60
+# התמונות של הזמרים כמעט לא משתנות, ולכן מתעדכנות פעם בשבוע (28 חיפושים בספוטיפיי בכל עדכון)
+LOGIN_SECONDS = 7 * 24 * 60 * 60
 
 
 LOGIN_RETRY_SECONDS = 15 * 60
@@ -318,6 +343,13 @@ def _read_login_file():
         return []
 
 
+def _login_file_time():
+    try:
+        return os.path.getmtime(_login_file())
+    except OSError:
+        return 0.0
+
+
 def _write_login_file(images):
     try:
         os.makedirs(library.CACHE_DIR, exist_ok=True)
@@ -335,6 +367,18 @@ def login_images():
     now = time.time()
     if now < _login_cache["until"]:
         return _login_cache["images"]
+    # אחרי הפעלה מחדש: הקובץ מהעדכון האחרון, אם הוא מהשבוע האחרון
+    saved_at = _login_file_time()
+    if now - saved_at < LOGIN_SECONDS:
+        images = _read_login_file()
+        if images:
+            _login_cache.update(until=saved_at + LOGIN_SECONDS, images=images)
+            return images
+    if now < limited_until():
+        # ספוטיפיי מגביל: לא שולחים עוד בקשות, ומציגים את מה שנשמר
+        images = _read_login_file()
+        _login_cache.update(until=now + LOGIN_RETRY_SECONDS, images=images)
+        return images
     try:
         # אותם שמות משתנים כמו בהתחברות (SPOTIFY_CLIENT_ID), לא השמות ברירת המחדל של spotipy
         credentials = SpotifyClientCredentials(
@@ -360,6 +404,13 @@ def login_images():
     return images
 
 
+# סמל האתר בלשונית הדפדפן, בתוך העמוד עצמו. בלעדיו הדפדפן מבקש /favicon.ico בכל ביקור ומקבל שגיאה
+FAVICON = (
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E"
+    "%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%A7%3C/text%3E%3C/svg%3E"
+)
+
+
 def page(body, title=None, wide=False, script="", theme=None, images=None):
     # כשספוטיפיי מוגבל, לא מבקשים ממנו עוד נתונים בשביל העיצוב
     limited = time.time() < limited_until()
@@ -375,6 +426,7 @@ def page(body, title=None, wide=False, script="", theme=None, images=None):
     return (
         f'<!doctype html><html lang="{lang()}" dir="{text_dir()}"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f'<link rel="icon" href="{FAVICON}">'
         f"<title>{escape(title)}</title><link rel='stylesheet' href='/static/style.css?v={STYLE_VERSION}'><style>{themes.theme_css(theme)}</style></head><body>"
         + themes.background_html(images, theme)
         + _("<main class=\"wrap{a0}\"><header><div class=\"brand\">{a1}<a class=\"logo\" href=\"/\">🎧 פלייליסטור</a></div>{a2}</header>", a0=" wide" if wide else "", a1=switch, a2=lang_switch() + user_html)

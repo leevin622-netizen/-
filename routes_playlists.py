@@ -4,6 +4,7 @@
 from html import escape
 from flask import redirect, request
 from i18n import _
+import library
 from translations import TRANSLATIONS
 import favourites
 from engine import PLAYLIST_DESCRIPTION
@@ -46,6 +47,21 @@ def app_playlists(sp):
         if not block.get("next"):
             return found
         offset += 50
+
+
+def cached_app_playlists(sp):
+    """
+    הרשימה נשמרת לכמה שעות, כי כדי לבנות אותה עוברים על כל הפלייליסטים של המשתמש.
+    כל שינוי דרך האתר (שמירה, שינוי שם, הסרה) מוחק אותה, כך שהיא תמיד מעודכנת.
+    """
+    return library.cached(user_id(sp), APP_PLAYLISTS, lambda: app_playlists(sp))
+
+
+def forget_app_playlists(sp):
+    library.forget(user_id(sp), APP_PLAYLISTS)
+
+
+APP_PLAYLISTS = "app_playlists"
 
 
 def owned_playlist(sp, playlist_id):
@@ -93,7 +109,7 @@ def my_playlists():
     sp = web.get_spotify_client()
     if sp is None:
         return redirect("/login")
-    playlists = app_playlists(sp)
+    playlists = cached_app_playlists(sp)
     if not playlists:
         body = _('<p class="note">עדיין לא שמרתם פלייליסטים דרך פלייליסטור.</p>')
     else:
@@ -175,6 +191,7 @@ def rename_playlist(playlist_id):
     name = request.form.get("name", "").strip()[:100]
     if name:
         sp.playlist_change_details(playlist_id, name=name)
+        forget_app_playlists(sp)
     return redirect(f"/playlist/{playlist_id}")
 
 
@@ -191,6 +208,7 @@ def remove_from_playlist(playlist_id):
     if position is not None and uri.startswith("spotify:track:"):
         # ספוטיפיי מסיר רק אם השיר נמצא במקום הזה, כך שלא נמחק שיר אחר בטעות
         sp.playlist_remove_specific_occurrences_of_items(playlist_id, [{"uri": uri, "positions": [position]}])
+        forget_app_playlists(sp)
     return redirect(f"/playlist/{playlist_id}")
 
 
@@ -222,4 +240,5 @@ def unfollow_playlist(playlist_id):
     if error:
         return error
     sp.current_user_unfollow_playlist(playlist_id)
+    forget_app_playlists(sp)
     return redirect("/my-playlists")
