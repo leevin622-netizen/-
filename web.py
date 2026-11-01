@@ -15,6 +15,7 @@ import spotipy
 from spotipy.cache_handler import MemoryCacheHandler
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth, SpotifyOauthError
 from lastfm import get_tags_for_artists
+import build_playlists
 import library
 import ratelimit
 import themes
@@ -103,6 +104,13 @@ RATE_LIMITS = {
 
 
 DEFAULT_LIMIT = ("all", 300, 60)
+
+
+@app.before_request
+def note_activity():
+    """כל ביקור באתר (חוץ מקבצים קבועים) עוצר לכמה דקות את העדכון ברקע, כדי שהמכסה של ספוטיפיי תישאר למשתמשים."""
+    if request.endpoint != "static":
+        build_playlists.note_user_activity()
 
 
 @app.before_request
@@ -354,7 +362,7 @@ def login_images():
 
 def page(body, title=None, wide=False, script="", theme=None, images=None):
     # כשספוטיפיי מוגבל, לא מבקשים ממנו עוד נתונים בשביל העיצוב
-    limited = time.time() < _limit["until"]
+    limited = time.time() < limited_until()
     vibe = {"theme": "default", "images": []} if limited else current_vibe()
     theme = theme or vibe["theme"]
     images = vibe["images"] if images is None else images
@@ -530,15 +538,30 @@ _limit = {"until": 0.0}
 
 
 def retry_after(error):
-    """כמה שניות ספוטיפיי מבקש להמתין. בלי מספר, דקה. לא יותר משש שעות."""
-    try:
-        return min(max(int((error.headers or {}).get("Retry-After", 60)), 1), 6 * 60 * 60)
-    except (TypeError, ValueError):
-        return 60
+    """
+    כמה שניות ספוטיפיי מבקש להמתין. כש-spotipy מוותר בעצמו המספר לא בשגיאה אלא רק ביומן,
+    ולכן לוקחים אותו משם (build_playlists קורא אותו). בלי מספר בכלל, דקה.
+    """
+    header = (getattr(error, "headers", None) or {}).get("Retry-After", "")
+    if str(header).isdigit():
+        return max(int(header), 1)
+    return build_playlists._RetryAfterSpy.seconds or 60
 
 
 def remember_limit(error):
-    _limit["until"] = max(_limit["until"], time.time() + retry_after(error))
+    """
+    זוכר את ההגבלה לכל העמודים, וגם לעדכון ברקע: הוא לא ישלח בקשות עד שהיא תיגמר.
+    ההגבלה משותפת לכל האפליקציה, כך שמה שמשתמש נתקל בו חל גם על העדכון ברקע, ולהפך.
+    """
+    seconds = retry_after(error)
+    _limit["until"] = max(_limit["until"], time.time() + seconds)
+    if seconds > build_playlists.MAX_WAIT_SECONDS:
+        build_playlists.remember_block(seconds)
+
+
+def limited_until():
+    """עד מתי ספוטיפיי מגביל: ממה שמשתמשים נתקלו בו, או ממה שהעדכון ברקע נתקל בו."""
+    return max(_limit["until"], build_playlists.blocked_until())
 
 
 def clock(timestamp):
@@ -562,8 +585,8 @@ library.on_stale = on_cache_stale
 def notices():
     """הודעות שמופיעות מעל כל עמוד: ספוטיפיי מוגבל, או נתונים ישנים שמוצגים."""
     notes = []
-    if time.time() < _limit["until"]:
-        until = clock(_limit["until"])
+    if time.time() < limited_until():
+        until = clock(limited_until())
         notes.append(
             _("ספוטיפיי הגביל את הבקשות לזמן מה. אפשר לנסות שוב אחרי {a0}. עד אז מוצגים הנתונים שנשמרו בפעם האחרונה, כשיש כאלה.", a0=until)
         )

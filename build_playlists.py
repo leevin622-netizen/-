@@ -33,8 +33,11 @@ RETRIES = 2
 MAX_WAIT_SECONDS = 600
 # הפסקה אחרי כל בקשה: בקשה אחת בשנייה לכל היותר
 PAUSE_SECONDS = 1.0
-# לא יותר מזה בקשות בהרצה אחת. הבנייה מתחלקת על כמה שעות, ולא מגיעה לחסימה
-REQUESTS_PER_RUN = 400
+# לא יותר מזה בקשות בהרצה אחת (כלומר בשעה). המכסה של ספוטיפיי משותפת לכל האפליקציה,
+# ולכן העדכון ברקע לוקח ממנה מעט, והשאר נשאר למשתמשים באתר. 400 בשעה כבר הביאו לחסימה של יום
+REQUESTS_PER_RUN = 100
+# כשמישהו השתמש באתר בדקות האחרונות, העדכון ברקע לא שולח בקשות, וממתין שהאתר יתפנה
+USER_QUIET_SECONDS = 10 * 60
 # אחרי עצירה (חלוקה לשעות, או חסימה) ממשיכים כעבור שעה, או כשהחסימה נגמרת
 RETRY_AFTER_SECONDS = 3600
 # אחרי שהכול מעודכן, בודקים שוב כעבור כמה שעות אם משהו התיישן
@@ -43,11 +46,20 @@ CHECK_AGAIN_SECONDS = 6 * 60 * 60
 BLOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache", "spotify_block.json")
 
 _lock = threading.Lock()
-_state = {"running": False}
+_state = {"running": False, "user_at": 0.0}
 
 
 class RateLimited(RuntimeError):
     pass
+
+
+def note_user_activity():
+    """האתר מדווח שמשתמש פעיל עכשיו (בכל בקשה), כדי שהעדכון ברקע יפנה לו את המכסה של ספוטיפיי."""
+    _state["user_at"] = time.time()
+
+
+def users_active():
+    return time.time() - _state["user_at"] < USER_QUIET_SECONDS
 
 
 _sent = {"count": 0}
@@ -76,15 +88,19 @@ def blocked_until():
 
 
 def remember_block(seconds):
+    """זוכר עד מתי ספוטיפיי חוסם. חסימה קצרה יותר לא מקצרת חסימה ידועה וארוכה יותר."""
+    until = max(blocked_until(), time.time() + seconds + 60)
     os.makedirs(os.path.dirname(BLOCK_FILE), exist_ok=True)
     with open(BLOCK_FILE, "w", encoding="utf-8") as f:
-        json.dump({"until": time.time() + seconds + 60}, f)
+        json.dump({"until": until}, f)
 
 
 def with_retry(call):
     """ספוטיפיי מגביל בקשות. מחכים קצת ומנסים שוב. אם ההמתנה ארוכה, עוצרים מיד."""
     if _sent["count"] >= REQUESTS_PER_RUN:
         raise RateLimited(f"נשלחו {REQUESTS_PER_RUN} בקשות. ממשיכים בעוד שעה, כדי לא להגיע לחסימה")
+    if users_active():
+        raise RateLimited("יש משתמשים באתר. העדכון ברקע ממתין, כדי שהמכסה של ספוטיפיי תישאר להם")
     for attempt in range(1, RETRIES + 1):
         _sent["count"] += 1
         _RetryAfterSpy.seconds = None
@@ -273,7 +289,9 @@ def refresh_in_background():
                     except Exception as error:  # עדכון ברקע לא אמור להפיל את האפליקציה
                         log(f"העדכון נכשל: {error}")
                     if not finished:
-                        wait = max(RETRY_AFTER_SECONDS, blocked_until() - time.time())
+                        # כשהעצירה היא בגלל משתמשים באתר, בודקים שוב כשהם כנראה סיימו, ולא בעוד שעה
+                        pause = USER_QUIET_SECONDS if users_active() else RETRY_AFTER_SECONDS
+                        wait = max(pause, blocked_until() - time.time())
                         log(f"ממשיכים בעוד {int(wait // 60)} דקות")
                         time.sleep(wait)
                         continue

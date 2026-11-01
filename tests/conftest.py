@@ -53,6 +53,8 @@ def temp_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(routes_build, "_previews", {})
     ratelimit._hits.clear()
     build_playlists._sent["count"] = 0
+    build_playlists._state["user_at"] = 0.0
+    monkeypatch.setattr(web, "_limit", {"until": 0.0})
     # בלי נתוני אווירה (ReccoBeats): הסינון לפי אווירה פשוט לא משנה כלום
     monkeypatch.setattr(engine, "get_features", lambda ids: {})
     for module in list(sys.modules.values()):

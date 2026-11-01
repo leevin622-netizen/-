@@ -63,3 +63,48 @@ def test_block_seconds_read_from_spotipy_log():
 def test_background_refresh_off_in_tests():
     build_playlists.refresh_in_background()
     assert not build_playlists._state["running"]
+
+
+def test_background_waits_while_users_are_on_the_site():
+    build_playlists.note_user_activity()
+    sp = FakeSpotify()
+    with pytest.raises(build_playlists.RateLimited):
+        build_playlists._GentleClient(sp).search(q="x", type="track", limit=10, offset=0)
+    assert sp.calls == []
+
+
+def test_background_resumes_after_users_leave(monkeypatch):
+    build_playlists.note_user_activity()
+    now = time.time()
+    monkeypatch.setattr(time, "time", lambda: now + build_playlists.USER_QUIET_SECONDS + 1)
+    assert not build_playlists.users_active()
+
+
+def test_visiting_a_page_pauses_background_but_static_files_do_not(client):
+    client.get("/static/style.css")
+    assert not build_playlists.users_active()
+    client.get("/")
+    assert build_playlists.users_active()
+
+
+def test_shorter_block_does_not_shorten_known_block():
+    build_playlists.remember_block(20000)
+    long_until = build_playlists.blocked_until()
+    build_playlists.remember_block(100)
+    assert build_playlists.blocked_until() == long_until
+
+
+def test_block_hit_by_a_user_stops_background_and_shows_notice(logged_in, monkeypatch):
+    import logging
+
+    import web
+    client, sp, _csrf = logged_in
+
+    def limited(*args, **kwargs):
+        logging.getLogger("spotipy.util").warning("Retry will occur after: 80000 s")
+        raise SpotifyException(429, -1, "Max Retries")
+    monkeypatch.setattr(sp, "current_user_playlists", limited)
+    client.get("/my-playlists")
+    assert build_playlists.blocked_until() > time.time() + 79000
+    assert web.limited_until() > time.time() + 79000
+    assert "ספוטיפיי הגביל" in client.get("/build").get_data(as_text=True)
