@@ -1,3 +1,4 @@
+import gzip
 import os
 import secrets
 import time
@@ -43,19 +44,37 @@ if not os.getenv("FLASK_SECRET"):
 
 
 def csrf_token():
-    """אסימון שכל טופס חייב לשלוח, כדי שאתר אחר לא יוכל לשמור פלייליסטים בשמך."""
+    """
+    אסימון שכל טופס חייב לשלוח, כדי שאתר אחר לא יוכל לשמור פלייליסטים בשמך.
+    בכל עמוד האסימון נראה אחרת (מוצפן עם מסכה אקראית), כי העמודים נשלחים דחוסים,
+    ואסימון קבוע בעמוד דחוס אפשר לנחש לפי גודל התשובה (התקפת BREACH).
+    """
     if "csrf" not in session:
         session["csrf"] = secrets.token_urlsafe(32)
-    return session["csrf"]
+    secret = session["csrf"].encode()
+    mask = secrets.token_bytes(len(secret))
+    return (mask + bytes(a ^ b for a, b in zip(mask, secret))).hex()
+
+
+def unmask_csrf(value):
+    """האסימון המקורי מתוך אסימון עם מסכה, או הערך כמו שהוא אם הוא לא כזה."""
+    try:
+        raw = bytes.fromhex(value)
+    except ValueError:
+        return value
+    half = len(raw) // 2
+    if not raw or len(raw) % 2:
+        return value
+    return bytes(a ^ b for a, b in zip(raw[:half], raw[half:])).decode("latin-1")
 
 
 @app.before_request
 def check_csrf():
     # בלי אסימון בסשן אין מה לאמת, ולכן גם טופס בלי אסימון נדחה
     expected = session.get("csrf") or ""
-    given = request.form.get("csrf") or ""
+    given = unmask_csrf(request.form.get("csrf") or "")
     if request.method == "POST" and not (
-        expected and secrets.compare_digest(given.encode(), expected.encode())
+        expected and secrets.compare_digest(given.encode("latin-1", "replace"), expected.encode())
     ):
         return (
             _('<!doctype html><meta charset="utf-8"><p dir="rtl">הטופס פג תוקף. רעננו את העמוד ונסו שוב.</p>'),
@@ -93,6 +112,30 @@ def security_headers(response):
     response.headers["Referrer-Policy"] = "same-origin"
     if PUBLIC_HTTPS:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
+
+
+# דחיסה: עמוד של 40KB יורד לכ-8KB. קטן מזה לא שווה דחיסה
+COMPRESS_TYPES = {"text/html", "application/json", "text/css", "application/javascript"}
+COMPRESS_MIN_BYTES = 1024
+
+
+@app.after_request
+def compress(response):
+    if (
+        "gzip" not in request.headers.get("Accept-Encoding", "")
+        or response.direct_passthrough
+        or response.status_code != 200
+        or response.mimetype not in COMPRESS_TYPES
+        or "Content-Encoding" in response.headers
+    ):
+        return response
+    data = response.get_data()
+    if len(data) < COMPRESS_MIN_BYTES:
+        return response
+    response.set_data(gzip.compress(data, compresslevel=6))
+    response.headers["Content-Encoding"] = "gzip"
+    response.vary.add("Accept-Encoding")
     return response
 
 # user-follow-modify ו-user-library-modify מאפשרים לשמור אמנים ושירים בחשבון. שינוי ההרשאות דורש התחברות מחדש
@@ -1600,33 +1643,37 @@ def parse_position(value, total):
 
 CATALOG_JS = """
 (function () {
+  // השרת מסנן ושולח 60 כרטיסים בכל פעם. כאן רק מבקשים עוד, או מסננים מחדש
   var T = __T__;
-  var cards = [].slice.call(document.querySelectorAll('.pl-card'));
+  var grid = document.getElementById('pl-grid');
   var count = document.getElementById('pl-count'), more = document.getElementById('pl-more');
   var box = document.getElementById('pl-search');
-  // הסינון שמסומן מראש בשרת (למשל הקטגוריה שהמשתמש הכי שומע)
   function initial(group) {
     var chip = document.querySelector('[data-group="' + group + '"][aria-pressed="true"]');
     return chip ? chip.dataset.value : '';
   }
-  var state = {cat: initial('cat'), market: initial('market'), shown: 60};
-  function match(card) {
-    var q = box.value.trim().toLowerCase();
-    return (!state.cat || card.dataset.cats.split(' ').indexOf(state.cat) >= 0)
-      && (!state.market || card.dataset.markets.split(' ').indexOf(state.market) >= 0)
-      && (!q || card.dataset.name.indexOf(q) >= 0);
+  var state = {cat: initial('cat'), market: initial('market'), shown: +grid.dataset.shown, total: +grid.dataset.total};
+  var request = 0, timer = null;
+  function show() {
+    count.textContent = T.count.replace('{a}', state.shown).replace('{b}', state.total);
+    more.hidden = state.shown >= state.total;
   }
-  function render() {
-    var total = 0, visible = 0;
-    cards.forEach(function (card) {
-      var ok = match(card);
-      if (ok) total++;
-      var show = ok && visible < state.shown;
-      if (show) visible++;
-      card.hidden = !show;
-    });
-    count.textContent = T.count.replace('{a}', visible).replace('{b}', total);
-    more.hidden = visible >= total;
+  function load(append) {
+    var mine = ++request;
+    var query = new URLSearchParams({cat: state.cat, market: state.market, q: box.value.trim(),
+                                     offset: append ? state.shown : 0});
+    more.disabled = true;
+    fetch('/existing-playlists/cards?' + query)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (mine !== request) return;
+        if (append) { grid.insertAdjacentHTML('beforeend', data.html); } else { grid.innerHTML = data.html; }
+        state.shown = data.next;
+        state.total = data.total;
+        show();
+      })
+      .catch(function () { alert(T.load_failed); })
+      .then(function () { more.disabled = false; });
   }
   function pick(group, key) {
     [].forEach.call(document.querySelectorAll('[data-group="' + group + '"]'), function (chip) {
@@ -1637,19 +1684,19 @@ CATALOG_JS = """
     chip.addEventListener('click', function () {
       var key = chip.dataset.group === 'cat' ? 'cat' : 'market';
       state[key] = chip.dataset.value;
-      state.shown = 60;
       pick(chip.dataset.group, key);
-      render();
+      load(false);
     });
   });
-  box.addEventListener('input', function () { state.shown = 60; render(); });
-  more.addEventListener('click', function () { state.shown += 60; render(); });
-  document.getElementById('pl-grid').addEventListener('click', function (event) {
+  // חיפוש אחרי הפסקה קצרה בהקלדה, ולא על כל אות
+  box.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { load(false); }, 250); });
+  more.addEventListener('click', function () { load(true); });
+  grid.addEventListener('click', function (event) {
     var button = event.target.closest('.add');
     if (!button || button.disabled) return;
     button.disabled = true;
     var data = new FormData();
-    data.append('csrf', document.getElementById('pl-grid').dataset.csrf);
+    data.append('csrf', grid.dataset.csrf);
     data.append('id', button.dataset.id);
     fetch('/existing-playlists/follow', {method: 'POST', body: data})
       .then(function (r) { return r.json(); })
@@ -1658,11 +1705,34 @@ CATALOG_JS = """
       })
       .catch(function () { button.disabled = false; alert(T.failed); });
   });
-  render();
+  show();
 })();
 """
 
 MARKET_CHIPS = [("", "הכול"), ("US", "🇺🇸 ארצות הברית"), ("IL", "🇮🇱 ישראל (יוצרים ישראלים)")]
+
+
+# כמה כרטיסים בכל פעם: בטעינת הדף, ובכל לחיצה על "הצג עוד"
+CATALOG_PAGE = 60
+
+
+def filter_catalog(items, cat="", market="", query=""):
+    """
+    הפלייליסטים שמתאימים לסינון, עם המקום של כל אחד בקטלוג המלא: [(מקום, פלייליסט)].
+    ערכים לא מוכרים (קטגוריה או אזור שלא קיימים) לא מסננים כלום.
+    """
+    cat = cat if cat in catalog.CATEGORY_LABELS else ""
+    market = market if market in ("US", "IL") else ""
+    query = query.strip().lower()[:60]
+    return [
+        (rank, item) for rank, item in enumerate(items, 1)
+        if (not cat or cat in item["categories"]) and (not market or market in item["markets"])
+        and (not query or query in item["name"].lower())
+    ]
+
+
+def catalog_cards(ranked):
+    return "".join(catalog_card(rank, item) for rank, item in ranked)
 
 
 def catalog_card(rank, item):
@@ -1670,9 +1740,7 @@ def catalog_card(rank, item):
     # פלייליסט שעוד לא נמשך לו מספר עוקבים מוצג בלי השורה הזו
     followers = _("{a0} עוקבים", a0=catalog.short_number(item["followers"])) if item["followers"] is not None else None
     return (
-        f'<li class="pl-card" data-cats="{escape(" ".join(item["categories"]))}" '
-        f'data-markets="{escape(" ".join(item["markets"]))}" data-name="{escape(item["name"].lower())}">'
-        f'<span class="rank">{rank}</span>{cover(item["image"])}<div class="info">'
+        f'<li class="pl-card"><span class="rank">{rank}</span>{cover(item["image"])}<div class="info">'
         f'<div class="title"><a class="sp" href="https://open.spotify.com/playlist/{pid}" target="_blank" rel="noopener">{escape(item["name"])}</a></div>'
         f'<div class="sub">{escape(item["owner"] or "")}</div>{f'<div class="sub">👥 {followers}</div>' if followers else ""}</div>'
         + _('<button type="button" class="btn secondary add" data-id="{a0}">➕ לספרייה</button></li>', a0=pid)
@@ -1712,10 +1780,11 @@ def existing_playlists():
         chip.format(g="market", v=value, p="false" if value else "true", t=escape(_(label)))
         for value, label in MARKET_CHIPS
     )
-    cards = "".join(catalog_card(rank, item) for rank, item in enumerate(items, 1))
+    first = filter_catalog(items, favourite)
     texts = {
         "count": _("מוצגים {a} מתוך {b}"), "added": _("✓ נוסף"),
         "failed": _("לא הצלחנו להוסיף את הפלייליסט. נסו שוב."),
+        "load_failed": _("לא הצלחנו לטעון את הפלייליסטים. נסו שוב."),
     }
     return page(
         _("<h1>פלייליסטים קיימים</h1>")
@@ -1724,12 +1793,29 @@ def existing_playlists():
         + f'<div class="chips" role="group">{market_chips}</div><div class="chips" role="group">{category_chips}</div>'
         + _('<input type="text" id="pl-search" class="search" placeholder="חיפוש לפי שם פלייליסט" autocomplete="off">')
         + '<p class="note" id="pl-count"></p>'
-        + f'<ul class="list cols" id="pl-grid" data-csrf="{csrf_token()}">{cards}</ul>'
+        + f'<ul class="list cols" id="pl-grid" data-csrf="{csrf_token()}" data-total="{len(first)}" '
+        f'data-shown="{min(len(first), CATALOG_PAGE)}">{catalog_cards(first[:CATALOG_PAGE])}</ul>'
         + '<br><button type="button" class="btn secondary" id="pl-more">' + escape(_("הצג עוד")) + "</button>"
         + back,
         title=_("פלייליסטים קיימים"), wide=True,
         script=CATALOG_JS.replace("__T__", json.dumps(texts, ensure_ascii=False)),
     )
+
+
+@app.route("/existing-playlists/cards")
+def catalog_more_cards():
+    """עוד כרטיסים לפי הסינון (קטגוריה, אזור וחיפוש), מ-offset והלאה. משמש את "הצג עוד" ואת הסינון."""
+    if get_spotify_client() is None:
+        return {"html": "", "total": 0, "next": 0}, 401
+    matching = filter_catalog(
+        catalog.load(), request.args.get("cat", ""), request.args.get("market", ""), request.args.get("q", ""),
+    )
+    try:
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except ValueError:
+        offset = 0
+    chunk = matching[offset:offset + CATALOG_PAGE]
+    return {"html": catalog_cards(chunk), "total": len(matching), "next": offset + len(chunk)}
 
 
 @app.route("/existing-playlists/follow", methods=["POST"])

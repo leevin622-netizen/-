@@ -19,7 +19,8 @@ BUDGETS = [
     ("GET", "/my-playlists", 300, 100),
     ("GET", "/playlist/" + PLAYLIST_ID, 300, 100),
     ("POST", "/build", 500, 150),
-    ("GET", "/existing-playlists", 500, 900),
+    ("GET", "/existing-playlists", 300, 80),
+    ("GET", "/existing-playlists/cards?offset=60&market=IL", 200, 60),
 ]
 
 
@@ -39,7 +40,7 @@ def fill_catalog(size=1000):
 @pytest.mark.parametrize("method,path,max_ms,max_kb", BUDGETS)
 def test_page_speed_and_size(logged_in, method, path, max_ms, max_kb):
     client, _sp, csrf = logged_in
-    if path == "/existing-playlists":
+    if path.startswith("/existing-playlists"):
         fill_catalog()
     form = {"csrf": csrf, "source": "search", "genre_choice": "pop", "language": "ביחד", "count": "50"}
 
