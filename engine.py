@@ -255,9 +255,28 @@ def pick(pools, count, seen):
     return results
 
 
-def find_personal_tracks(sp, language, count, seen, years=None):
-    """שירים של האמנים המועדפים על המשתמש."""
+def genres_of(tags):
+    """
+    הז'אנרים מטופס היצירה שהתגיות של אמן מתאימות להם. לכל תגית הז'אנר הכי מדויק:
+    "israeli pop" נספר כפופ ישראלי ולא גם כפופ בינלאומי.
+    """
+    found = set()
+    for tag in tags:
+        fitting = [term for _name, term in GENRE_CHOICES if matches(term, [tag])]
+        if fitting:
+            found.add(max(fitting, key=len))
+    return found
+
+
+def find_personal_tracks(sp, language, count, seen, years=None, genre="", artist_tags=None):
+    """
+    שירים של האמנים המועדפים על המשתמש. כשנבחר ז'אנר, רק אמנים מאותו ז'אנר,
+    כדי שבפלייליסט רוק לא ייכנס אמן פופ. artist_tags: {id של אמן: תגיות}, למי שאין לו ז'אנרים בספוטיפיי.
+    """
     artists = sp.current_user_top_artists(limit=20, time_range="medium_term")["items"]
+    if genre:
+        tags = artist_tags or {}
+        artists = [a for a in artists if genre in genres_of(a.get("genres") or tags.get(a["id"], []))]
     random.shuffle(artists)
     pools = []
     for artist in artists[:5]:
@@ -305,16 +324,18 @@ def filter_by_vibe(pools, mood, event, wanted, ranges=None):
     return filtered
 
 
-def find_tracks(sp, genre, mood, event, language, count, personal=False, ranges=None, years=None, exclude=()):
+def find_tracks(sp, genre, mood, event, language, count, personal=False, ranges=None, years=None, exclude=(),
+                artist_tags=None):
     """
     מחזיר רשימת שירים (dict עם name, artist, uri) לפי הקריטריונים.
     exclude: כתובות של שירים שכבר בפלייליסט, כדי לא להביא אותם שוב (הוסף עוד שירים).
+    artist_tags: תגיות של האמנים המועדפים, כדי לבחור מהם רק את אלה שמתאימים לז'אנר.
     """
     seen = set(exclude)
     results = []
     if personal:
         try:
-            results = find_personal_tracks(sp, language, count // 2, seen, years)
+            results = find_personal_tracks(sp, language, count // 2, seen, years, genre, artist_tags)
         except (SpotifyException, requests.RequestException) as error:
             # האמנים המועדפים הם תוספת. אם ספוטיפיי לא זמין, ממשיכים בלעדיהם
             print(f"[פלייליסטור] מדלגים על האמנים המועדפים: {error}")

@@ -18,6 +18,7 @@ from translations import TRANSLATIONS
 import build_playlists
 import catalog
 import favourites
+import taste
 import json
 from urllib.parse import urlencode, urlsplit
 from playlist_names import suggest_names
@@ -589,7 +590,10 @@ def image_url(images):
 
 
 def load_vibe(sp, uid):
-    """הסגנון של המשתמש ותמונות לרקע, לפי האמנים והשירים שהוא הכי שומע."""
+    """
+    הסגנון של המשתמש ותמונות לרקע, לפי האמנים והשירים שהוא הכי שומע.
+    גם הז'אנרים שהוא הכי שומע (genres) והתגיות של האמנים המובילים (artist_tags), להתאמה אישית.
+    """
     artist_ranks, artist_objects = library.cached(uid, "top_artists", lambda: library.top_ranks(sp, "artists"))
     _ranks, track_objects = library.cached(uid, "top_tracks", lambda: library.top_ranks(sp, "tracks"))
     artists = sorted(artist_objects.values(), key=lambda a: min(artist_ranks[a["id"]].values()))[:40]
@@ -615,6 +619,8 @@ def load_vibe(sp, uid):
         "theme": themes.detect_theme(weighted),
         "images": mix_images(all_faces, all_covers),
         "by_theme": by_theme,
+        "genres": taste.genre_scores(weighted),
+        "artist_tags": artist_tags,
     }
 
 
@@ -644,8 +650,8 @@ def auto_vibe():
         if sp is None:
             return {"theme": "default", "images": []}
         uid = user_id(sp)
-        # המפתח כולל גרסה, כדי שמטמון ישן בלי תמונות לפי סגנון לא ייטען
-        return library.cached(uid, "vibe_v2", lambda: load_vibe(sp, uid))
+        # המפתח כולל גרסה, כדי שמטמון ישן בלי ז'אנרים ותגיות לא ייטען
+        return library.cached(uid, "vibe_v3", lambda: load_vibe(sp, uid))
     except Exception:
         return {"theme": "default", "images": []}
 
@@ -768,10 +774,16 @@ def cover(url):
     return f'<img src="{escape(url)}" alt="" loading="lazy">' if url else '<div class="noimg"></div>'
 
 
-def genre_options():
+def genre_options(selected=""):
     return _('<option value="">ללא</option>') + "".join(
-        f'<option value="{escape(term)}">{escape(_(name))}</option>' for name, term in GENRE_CHOICES
+        f'<option value="{escape(term)}"{" selected" if term == selected else ""}>{escape(_(name))}</option>'
+        for name, term in GENRE_CHOICES
     )
+
+
+def my_genres():
+    """הז'אנרים מטופס היצירה שהמשתמש המחובר הכי שומע, מהמוביל. רשימה ריקה אם עוד לא ידוע."""
+    return taste.top_genres(auto_vibe().get("genres") or {})
 
 
 GENRE_NAMES = {term: name for name, term in HEBREW_GENRES + WORLD_GENRES + GENRE_CHOICES}
@@ -1146,9 +1158,38 @@ def home():
             else _("<span>מה שהכי מתנגן אצלך: {a0} {a1} · אפשר להחליף בתפריט למעלה</span>", a0=auto["emoji"], a1=escape(_(auto["label"])))
         )
         + "</span></div>"
+        + for_you()
         + '<div class="menu">'
         + onboarding_card
         + _("<a href=\"/build\">✨ צור פלייליסט חדש<small>לפי ז'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a><a href=\"/saved-tracks\">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם השמעת קטעים ומיון לפי אמן, תאריך ועוד</small></a><a href=\"/my-artists\">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a><a href=\"/stats\">📊 הסטטיסטיקות שלי<small>ז'אנרים, עשורים, אמנים מובילים וכרטיס לשיתוף</small></a><a href=\"/existing-playlists\">📚 פלייליסטים קיימים<small>הפלייליסטים הגדולים בספוטיפיי בארצות הברית ובישראל, עם סינון לפי קטגוריות</small></a><a href=\"/my-playlists\">🛠 הפלייליסטים שיצרתי<small>שינוי שם, הסרת שירים וסידור</small></a></div><p class=\"note\">הנתונים נשמרים לכמה שעות כדי שהאפליקציה תהיה מהירה. <a href=\"/refresh\">רענון נתונים מספוטיפיי</a></p><form method=\"post\" action=\"/delete-data\" class=\"card\" onsubmit=\"return confirm('למחוק מהשרת את הנתונים ששמורים עליכם? חשבון הספוטיפיי שלכם לא ישתנה.')\"><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><p class=\"note\">הנתונים שנשמרו בשרת: הספרייה ושירים שאהבתם, כדי שהאפליקציה תהיה מהירה. מחיקה כאן לא משנה שום דבר בספוטיפיי.</p><button class=\"btn secondary\" type=\"submit\">מחיקת הנתונים שלי מהשרת</button></form>", a0=csrf_token())
+    )
+
+
+# כמה שירים בפלייליסט "בשבילך" מדף הבית
+FOR_YOU_TRACKS = 30
+
+
+def for_you():
+    """
+    "בשבילך": פלייליסט בלחיצה אחת לכל אחד מהז'אנרים שהמשתמש הכי שומע, עם האמנים המועדפים שלו מאותו ז'אנר.
+    טופס אחד: הכפתור שנלחץ שולח את הז'אנר שלו. ריק אם הטעם עוד לא ידוע.
+    """
+    genres = my_genres()
+    if not genres:
+        return ""
+    names = {term: name for name, term in GENRE_CHOICES}
+    buttons = "".join(
+        f'<button class="btn secondary" type="submit" name="genre_choice" value="{escape(term)}">'
+        f'{escape(_(names[term]))}</button>'
+        for term in genres
+    )
+    return (
+        '<form method="post" action="/build" class="card for-you">'
+        f'<input type="hidden" name="csrf" value="{csrf_token()}">'
+        '<input type="hidden" name="source" value="search"><input type="hidden" name="language" value="ביחד">'
+        f'<input type="hidden" name="count" value="{FOR_YOU_TRACKS}"><input type="hidden" name="personal" value="on">'
+        + _("<h2>🎧 בשבילך</h2><p class=\"note\">פלייליסט של {a0} שירים בלחיצה אחת, לפי הז'אנרים שאתם הכי שומעים, עם האמנים שאתם אוהבים.</p>", a0=FOR_YOU_TRACKS)
+        + f'<div class="toolbar">{buttons}</div></form>'
     )
 
 
@@ -1563,7 +1604,12 @@ CATALOG_JS = """
   var cards = [].slice.call(document.querySelectorAll('.pl-card'));
   var count = document.getElementById('pl-count'), more = document.getElementById('pl-more');
   var box = document.getElementById('pl-search');
-  var state = {cat: '', market: '', shown: 60};
+  // הסינון שמסומן מראש בשרת (למשל הקטגוריה שהמשתמש הכי שומע)
+  function initial(group) {
+    var chip = document.querySelector('[data-group="' + group + '"][aria-pressed="true"]');
+    return chip ? chip.dataset.value : '';
+  }
+  var state = {cat: initial('cat'), market: initial('market'), shown: 60};
   function match(card) {
     var q = box.value.trim().toLowerCase();
     return (!state.cat || card.dataset.cats.split(' ').indexOf(state.cat) >= 0)
@@ -1654,9 +1700,12 @@ def existing_playlists():
         if build_playlists.is_running() or catalog.needs_refresh() else ""
     )
     per_category = Counter(c for item in items for c in item["categories"])
+    # נפתח על הקטגוריה של הז'אנר שהמשתמש הכי שומע, אם יש בה פלייליסטים
+    favourite = taste.favourite_category(auto_vibe().get("genres") or {})
+    favourite = favourite if per_category[favourite] else ""
     chip = '<button type="button" class="chip" data-group="{g}" data-value="{v}" aria-pressed="{p}">{t}</button>'
-    category_chips = chip.format(g="cat", v="", p="true", t=escape(_("הכול"))) + "".join(
-        chip.format(g="cat", v=key, p="false", t=f"{escape(_(label))} ({per_category[key]})")
+    category_chips = chip.format(g="cat", v="", p=str(not favourite).lower(), t=escape(_("הכול"))) + "".join(
+        chip.format(g="cat", v=key, p=str(key == favourite).lower(), t=f"{escape(_(label))} ({per_category[key]})")
         for key, label, _terms in catalog.CATEGORIES if per_category[key]
     )
     market_chips = "".join(
@@ -1879,17 +1928,18 @@ def decade_options(first_label):
     )
 
 
-def build_form(error=""):
+def build_form(error="", genre=""):
     """
     טופס יצירת פלייליסט. חובה לבחור לפחות אחד מהשלושה: ז'אנר, מצב רוח או אירוע,
     והם מסומנים יחד בקבוצה אחת עם כוכבית. השאר רשות.
+    genre: הז'אנר שמסומן מראש (הז'אנר שהמשתמש הכי שומע).
     """
     req = '<span class="req" aria-hidden="true">*</span>'
     return page(
         _("<h1>צור פלייליסט</h1>")
         + (f'<div class="form-error" role="alert" id="build-error">{escape(error)}</div>' if error
            else '<div class="form-error" role="alert" id="build-error" hidden></div>')
-        + _("<form method=\"post\" class=\"card\" id=\"build-form\" novalidate><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><label class=\"field\">מאיפה לקחת שירים{a1}<select name=\"source\" required><option value=\"search\">🌍 מכל ספוטיפיי</option><option value=\"liked\">❤️ רק מהשירים שאהבתי</option></select></label><fieldset class=\"group{a2}\" id=\"must-pick\"><legend>מה מתאים לכם?{a3}</legend><p class=\"note\" style=\"margin-top:0\">חובה לבחור לפחות אחד מהשלושה.</p><label class=\"field\">🎵 ז'אנר<select name=\"genre_choice\">{a4}</select></label><label class=\"field\">😊 מצב רוח<select name=\"mood\"><option value=\"\">ללא</option>", a0=csrf_token(), a1=req, a2=" invalid" if error else "", a3=req, a4=genre_options())
+        + _("<form method=\"post\" class=\"card\" id=\"build-form\" novalidate><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><label class=\"field\">מאיפה לקחת שירים{a1}<select name=\"source\" required><option value=\"search\">🌍 מכל ספוטיפיי</option><option value=\"liked\">❤️ רק מהשירים שאהבתי</option></select></label><fieldset class=\"group{a2}\" id=\"must-pick\"><legend>מה מתאים לכם?{a3}</legend><p class=\"note\" style=\"margin-top:0\">חובה לבחור לפחות אחד מהשלושה.</p><label class=\"field\">🎵 ז'אנר<select name=\"genre_choice\">{a4}</select></label><label class=\"field\">😊 מצב רוח<select name=\"mood\"><option value=\"\">ללא</option>", a0=csrf_token(), a1=req, a2=" invalid" if error else "", a3=req, a4=genre_options(genre))
         + options(GENRE_HINTS.keys())
         + _("</select></label>"
         '<label class="field">📍 אירוע או סיטואציה<select name="event"><option value="">ללא</option>')
@@ -1912,7 +1962,8 @@ def build():
         return redirect("/login")
 
     if request.method == "GET":
-        return build_form()
+        favourite = my_genres()
+        return build_form(genre=favourite[0] if favourite else "")
 
     # קלט מהטופס: מגבילים אורך, ומקבלים רק ערכים מהתפריטים
     criteria = read_criteria()
@@ -1985,6 +2036,7 @@ def find_for(sp, criteria, exclude=(), count=None):
     return find_tracks(
         sp, criteria["genre"], criteria["mood"], criteria["event"], criteria["language"], count,
         personal=criteria["personal"], ranges=criteria["ranges"], years=criteria["years"], exclude=exclude,
+        artist_tags=auto_vibe().get("artist_tags"),
     )
 
 
