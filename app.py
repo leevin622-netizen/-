@@ -2089,9 +2089,8 @@ def save():
     )
 
 
-# בהפעלה (ובכל פעם שהשרת עולה אחרי עדכון) ממשיכים לבנות את קטלוג הפלייליסטים אם הוא ריק או ישן
-if not os.getenv("PLAYLISTOR_NO_REFRESH"):
-    build_playlists.refresh_in_background()
+# בהפעלה מתחיל העדכון ברקע של אינדקס השירים ושל קטלוג הפלייליסטים (ראה build_playlists.py)
+build_playlists.refresh_in_background()
 
 
 if __name__ == "__main__":

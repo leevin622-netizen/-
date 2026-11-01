@@ -71,12 +71,13 @@ def main():
     )
     only = sys.argv[1:]
     terms = [t for t in all_terms() if not only or t in only]
+    stale = set(index_store.stale_terms(terms))
     print(f"{len(terms)} מונחים לבנייה")
 
     for number, term in enumerate(terms, 1):
         label = f"[{number}/{len(terms)}] {term}"
         # מונח שנבחר בשם נבנה מחדש, גם אם כבר יש לו אינדקס (למשל אחרי הוספת מילים נרדפות)
-        if index_store.load_term(term) and term not in only:
+        if term not in stale and term not in only:
             print(f"{label}: כבר באינדקס, מדלגים")
             continue
         started = time.time()

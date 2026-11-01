@@ -1,8 +1,10 @@
 """
-בונה את הקטלוג של "פלייליסטים קיימים": מחפש פלייליסטים בספוטיפיי בארצות הברית ובישראל,
+עדכון ברקע של כל מה שהאפליקציה שומרת מספוטיפיי:
+1. אינדקס השירים (index_store), שממנו נבנים הפלייליסטים. כל מונח מתעדכן פעם בשבוע.
+2. הקטלוג של "פלייליסטים קיימים": מחפש פלייליסטים בספוטיפיי בארצות הברית ובישראל,
 לפי קטגוריות (ובעברית לשוק הישראלי), מביא לכל אחד את מספר העוקבים, ושומר את 500 הישראלים
 ו-500 האמריקאים הגדולים.
-האפליקציה מריצה את זה בעצמה ברקע כשהקטלוג ריק או ישן משבוע. אפשר גם ידנית, מתוך תיקיית הפרויקט:
+האפליקציה מריצה את זה בעצמה ברקע, ובודקת שוב כל כמה שעות. אפשר גם ידנית, מתוך תיקיית הפרויקט:
     .\\venv\\Scripts\\python build_playlists.py
 אפשר לעצור באמצע ולהתחיל שוב: מה שכבר נאסף לא נאסף מחדש.
 הבנייה איטית בכוונה (בקשה אחת בכל פעם, עם הפסקה), כי ספוטיפיי חוסם לכמה שעות מי שמציף אותו.
@@ -20,7 +22,11 @@ from spotipy.cache_handler import MemoryCacheHandler
 from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyClientCredentials
 
+import build_index
 import catalog
+import engine
+import index_store
+from vibes import get_features
 
 RETRIES = 2
 # המתנה ארוכה מזו לא שווה לחכות לה. עוצרים, ואפשר להמשיך אחר כך
@@ -31,6 +37,8 @@ PAUSE_SECONDS = 1.0
 REQUESTS_PER_RUN = 400
 # אחרי עצירה (חלוקה לשעות, או חסימה) ממשיכים כעבור שעה, או כשהחסימה נגמרת
 RETRY_AFTER_SECONDS = 3600
+# אחרי שהכול מעודכן, בודקים שוב כעבור כמה שעות אם משהו התיישן
+CHECK_AGAIN_SECONDS = 6 * 60 * 60
 
 BLOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache", "spotify_block.json")
 
@@ -152,13 +160,53 @@ def make_client():
     )
 
 
+class _GentleClient:
+    """לקוח ספוטיפיי לחיפושי האינדקס, שכל בקשה שלו עוברת דרך with_retry: הפסקה, ספירה ועצירה בחסימה."""
+
+    def __init__(self, sp):
+        self._sp = sp
+
+    def search(self, **kwargs):
+        return with_retry(lambda: self._sp.search(**kwargs))
+
+
+def needs_refresh():
+    return catalog.needs_refresh() or bool(index_store.stale_terms(build_index.all_terms()))
+
+
+def refresh_index(sp, log):
+    """מעדכן מונחים באינדקס השירים שהתיישנו. עד שמונח מתעדכן, הבנייה ממשיכה להשתמש בשירים הישנים שלו."""
+    stale = index_store.stale_terms(build_index.all_terms())
+    if not stale:
+        return
+    log(f"אינדקס השירים: {len(stale)} מונחים לעדכון")
+    gentle = _GentleClient(sp)
+    for number, term in enumerate(stale, 1):
+        tracks = engine.search_term(gentle, term, "ביחד", build_index.TRACKS_PER_TERM)
+        # מאפייני הקצב (ReccoBeats, לא ספוטיפיי), כדי שהסינון לפי אווירה יהיה מהיר
+        get_features([t["id"] for t in tracks if t.get("id")])
+        index_store.save_term(term, tracks)
+        log(f"[{number}/{len(stale)}] {term}: {len(tracks)} שירים")
+
+
 def run(sp, log=print):
-    """בונה או ממשיך לבנות. מחזיר True כשהקטלוג שלם, False אם נעצר באמצע."""
+    """
+    מעדכן את אינדקס השירים ואת הקטלוג, או ממשיך מאיפה שעצר.
+    מחזיר True כשהכול מעודכן, False אם נעצר באמצע.
+    """
     left = blocked_until() - time.time()
     if left > 0:
         log(f"ספוטיפיי חוסם עוד {int(left // 60)} דקות. לא שולחים בקשות עד אז")
         return False
     _sent["count"] = 0
+    try:
+        # קודם האינדקס: ממנו נבנים הפלייליסטים, וזה הכי חשוב למשתמשים
+        refresh_index(sp, log)
+    except RateLimited as error:
+        log(str(error))
+        return False
+    if not catalog.needs_refresh():
+        return True
     catalog.reclassify()
     jobs = catalog.search_jobs()
     log(f"שלב 1: {len(jobs)} חיפושים")
@@ -193,15 +241,18 @@ def run(sp, log=print):
 
 
 def is_running():
-    return _state["running"]
+    """האם הקטלוג מתעדכן עכשיו (לתצוגה בדף "פלייליסטים קיימים")."""
+    return _state["running"] and catalog.needs_refresh()
 
 
 def refresh_in_background():
     """
-    מתחיל עדכון ברקע אם הקטלוג ריק או ישן, ואין עדכון שכבר רץ. בטוח לקרוא שוב ושוב.
-    העדכון ממשיך לבד עד הסוף: אחרי כל עצירה הוא ממתין (שעה, או עד סוף החסימה) וממשיך, בלי שמישהו ייכנס לדף.
+    מתחיל את העדכון ברקע, אם הוא עוד לא רץ. בטוח לקרוא שוב ושוב.
+    העדכון לא נגמר: אחרי עצירה הוא ממתין (שעה, או עד סוף החסימה) וממשיך, ואחרי שהכול מעודכן
+    הוא בודק שוב כל כמה שעות. כך אינדקס השירים והקטלוג לא מתיישנים, בלי שמישהו ייכנס לדף.
+    PLAYLISTOR_NO_REFRESH (בבדיקות) מכבה את העדכון, כדי שלא יישלחו בקשות לספוטיפיי.
     """
-    if not catalog.needs_refresh():
+    if os.getenv("PLAYLISTOR_NO_REFRESH"):
         return
     with _lock:
         if _state["running"]:
@@ -215,18 +266,22 @@ def refresh_in_background():
         try:
             while True:
                 time.sleep(max(0.0, blocked_until() - time.time()))
-                try:
-                    if run(make_client(), log=log):
-                        return
-                except Exception as error:  # עדכון ברקע לא אמור להפיל את האפליקציה
-                    log(f"העדכון נכשל: {error}")
-                wait = max(RETRY_AFTER_SECONDS, blocked_until() - time.time())
-                log(f"ממשיכים בעוד {int(wait // 60)} דקות")
-                time.sleep(wait)
+                finished = False
+                if needs_refresh():
+                    try:
+                        finished = run(make_client(), log=log)
+                    except Exception as error:  # עדכון ברקע לא אמור להפיל את האפליקציה
+                        log(f"העדכון נכשל: {error}")
+                    if not finished:
+                        wait = max(RETRY_AFTER_SECONDS, blocked_until() - time.time())
+                        log(f"ממשיכים בעוד {int(wait // 60)} דקות")
+                        time.sleep(wait)
+                        continue
+                time.sleep(CHECK_AGAIN_SECONDS)
         finally:
             _state["running"] = False
 
-    threading.Thread(target=work, daemon=True, name="catalog-refresh").start()
+    threading.Thread(target=work, daemon=True, name="spotify-refresh").start()
 
 
 if __name__ == "__main__":
