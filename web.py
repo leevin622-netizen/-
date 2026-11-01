@@ -117,7 +117,7 @@ DEFAULT_LIMIT = ("all", 300, 60)
 @app.before_request
 def note_activity():
     """כל ביקור באתר (חוץ מקבצים קבועים) עוצר לכמה דקות את העדכון ברקע, כדי שהמכסה של ספוטיפיי תישאר למשתמשים."""
-    if request.endpoint not in ("static", None):
+    if request.endpoint not in ("static", "health", None):
         build_playlists.note_user_activity()
 
 
@@ -673,6 +673,12 @@ def spotify_error(error):
 @app.errorhandler(requests.RequestException)
 def network_error(error):
     return page(_("<p>אין חיבור לספוטיפיי כרגע. בדקו את החיבור לאינטרנט ונסו שוב.</p>")), 503
+
+
+@app.route("/health")
+def health():
+    """לבדיקה של watchdog.vbs: השרת עונה. בלי ספוטיפיי, כדי שתמיד יהיה מהיר."""
+    return "ok"
 
 
 @app.errorhandler(404)

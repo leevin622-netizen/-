@@ -195,3 +195,11 @@ def test_login_is_remembered_for_30_days(client, monkeypatch):
     assert response.status_code == 302
     cookie = response.headers["Set-Cookie"]
     assert "Expires=" in cookie and "HttpOnly" in cookie
+
+
+def test_health_answers_without_spotify_and_does_not_pause_background(client, monkeypatch):
+    monkeypatch.setattr(web, "get_spotify_client", lambda: (_ for _ in ()).throw(AssertionError("Spotify")))
+    build_playlists._state["user_at"] = 0.0
+    response = client.get("/health")
+    assert response.status_code == 200 and response.data == b"ok"
+    assert not build_playlists.users_active()
