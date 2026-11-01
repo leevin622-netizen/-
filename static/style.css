@@ -253,3 +253,4 @@ table.numbered tbody td:first-child::before {
   .bg, .bg-track, .blob, .drop, .beam, .note-float, .eq i { animation: none; }
   .bg-motion { display: none; }
 }
+#pl-edit li.saving { opacity: .55; }

@@ -110,3 +110,35 @@ def test_favicon_in_page_and_unknown_paths_do_not_pause_background(client):
     build_playlists._state["user_at"] = 0.0
     assert client.get("/favicon.ico").status_code == 404
     assert not build_playlists.users_active()
+
+
+FETCH = {"X-Requested-With": "fetch"}
+
+
+def test_playlist_edits_from_script_answer_json(logged_in):
+    client, sp, csrf = logged_in
+    base = f"/playlist/{PLAYLIST_ID}"
+    html = client.get(base).get_data(as_text=True)
+    assert 'id="pl-edit"' in html and 'id="pl-size"' in html
+    moved = client.post(f"{base}/move", data={"csrf": csrf, "position": "1", "direction": "up"}, headers=FETCH)
+    assert moved.get_json() == {"ok": True} and ("reorder", 1, 0) in sp.calls
+    removed = client.post(f"{base}/remove", data={"csrf": csrf, "position": "2", "uri": "spotify:track:3"},
+                          headers=FETCH)
+    assert removed.get_json() == {"ok": True} and ("remove", "spotify:track:3", 2) in sp.calls
+
+
+def test_invalid_playlist_edit_from_script_fails_without_calling_spotify(logged_in):
+    client, sp, csrf = logged_in
+    base = f"/playlist/{PLAYLIST_ID}"
+    response = client.post(f"{base}/move", data={"csrf": csrf, "position": "0", "direction": "up"}, headers=FETCH)
+    assert response.status_code == 400 and response.get_json() == {"ok": False}
+    response = client.post(f"{base}/remove", data={"csrf": csrf, "position": "9", "uri": "spotify:track:1"},
+                           headers=FETCH)
+    assert response.status_code == 400
+    assert not [c for c in sp.calls if c[0] in ("reorder", "remove")]
+
+
+def test_playlist_edit_without_script_still_redirects(logged_in):
+    client, _sp, csrf = logged_in
+    response = client.post(f"/playlist/{PLAYLIST_ID}/move", data={"csrf": csrf, "position": "1", "direction": "down"})
+    assert response.status_code == 302 and response.headers["Location"] == f"/playlist/{PLAYLIST_ID}"

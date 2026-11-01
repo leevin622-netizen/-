@@ -216,6 +216,10 @@ BUILD_CHECK_JS = """
 
 
 TABLE_JS = """
+// ערך המיון של תא: data-v כשיש (מספרים, תאריכים), ואחרת הטקסט שמוצג
+function sortValue(cell) {
+  return cell.dataset.v !== undefined ? cell.dataset.v : cell.textContent.trim();
+}
 document.querySelectorAll("table.sortable").forEach(function (table) {
   var body = table.tBodies[0];
   table.querySelectorAll("th[data-type]").forEach(function (th, col) {
@@ -231,7 +235,7 @@ document.querySelectorAll("table.sortable").forEach(function (table) {
       var numeric = th.dataset.type === "num";
       var rows = Array.from(body.rows);
       rows.sort(function (a, b) {
-        var x = a.cells[th.cellIndex].dataset.v, y = b.cells[th.cellIndex].dataset.v;
+        var x = sortValue(a.cells[th.cellIndex]), y = sortValue(b.cells[th.cellIndex]);
         if (numeric) {
           x = x === "" ? -Infinity : parseFloat(x); y = y === "" ? -Infinity : parseFloat(y);
           return desc ? y - x : x - y;
@@ -330,5 +334,54 @@ CATALOG_JS = """
       .catch(function () { button.disabled = false; alert(T.failed); });
   });
   show();
+})();
+"""
+
+
+EDIT_JS = """
+(function () {
+  // עריכת פלייליסט בלי לטעון את הדף מחדש: הזזה והסרה נשלחות ברקע, והרשימה מתעדכנת במקום.
+  // כל שינוי מחכה שהקודם יסתיים, כי המיקומים משתנים אחרי כל הזזה
+  var list = document.getElementById("pl-edit");
+  if (!list) return;
+  var size = document.getElementById("pl-size"), busy = false;
+  function renumber() {
+    var rows = list.children;
+    Array.prototype.forEach.call(rows, function (li, i) {
+      li.dataset.position = i;
+      li.querySelectorAll("input[name=position]").forEach(function (input) { input.value = i; });
+      var buttons = li.querySelectorAll("form[action$='/move'] button");
+      buttons[0].disabled = i === 0;
+      buttons[1].disabled = i === rows.length - 1;
+    });
+    if (size) size.textContent = rows.length;
+  }
+  list.addEventListener("submit", function (event) {
+    var form = event.target;
+    event.preventDefault();
+    if (busy) return;
+    busy = true;
+    var li = form.closest("li");
+    var direction = form.elements.direction ? form.elements.direction.value : "";
+    li.classList.add("saving");
+    fetch(form.action, {method: "POST", body: new FormData(form), headers: {"X-Requested-With": "fetch"}})
+      .then(function (r) { return r.ok ? r.json() : {ok: false}; })
+      .then(function (r) {
+        if (!r.ok) throw new Error("failed");
+        if (form.action.endsWith("/remove")) {
+          li.remove();
+        } else if (direction === "up" && li.previousElementSibling) {
+          list.insertBefore(li, li.previousElementSibling);
+        } else if (direction === "down" && li.nextElementSibling) {
+          list.insertBefore(li.nextElementSibling, li);
+        }
+        renumber();
+      })
+      .catch(function () {
+        alert("לא הצלחנו לשמור את השינוי. הדף ייטען מחדש.");
+        location.reload();
+      })
+      .then(function () { busy = false; li.classList.remove("saving"); });
+  });
 })();
 """

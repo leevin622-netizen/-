@@ -505,9 +505,10 @@ def cell(text, value=None, cls="", html=None):
     תא בטבלה. value הוא הערך שלפיו ממיינים (ברירת מחדל: הטקסט עצמו).
     html, אם יש, מוצג במקום הטקסט (למשל קישור), והמיון עדיין לפי הטקסט.
     """
-    value = text if value is None else value
     cls_attr = f' class="{cls}"' if cls else ""
-    return f'<td{cls_attr} data-v="{escape(str(value))}">{html or escape(str(text))}</td>'
+    # כשממיינים לפי הטקסט עצמו אין צורך לכתוב אותו פעמיים: המיון לוקח את הטקסט של התא (TABLE_JS)
+    sort_attr = "" if value is None else f' data-v="{escape(str(value))}"'
+    return f'<td{cls_attr}{sort_attr}>{html or escape(str(text))}</td>'
 
 
 def spotify_link(text, kind, item_id, inner_html=None):
@@ -519,7 +520,8 @@ def spotify_link(text, kind, item_id, inner_html=None):
     name = "" if text else _(' aria-label="פתיחה בספוטיפיי"')
     return (
         f'<a class="sp" href="https://open.spotify.com/{kind}/{escape(item_id)}"'
-        f' target="_blank" rel="noopener"{name}>{content}</a>'
+        # בלי rel="noopener": דפדפנים מוסיפים אותו לבד לכל target="_blank", וכך כל שורה בטבלה קצרה יותר
+        f' target="_blank"{name}>{content}</a>'
     )
 
 

@@ -10,6 +10,7 @@ import favourites
 from engine import PLAYLIST_DESCRIPTION
 import web
 from web import MAX_TRACKS, app, cover, csrf_token, image_url, page, spotify_link, user_id
+from scripts import EDIT_JS
 
 
 def playlist_size(playlist):
@@ -95,6 +96,17 @@ def editable_or_404(sp, playlist_id):
     return playlist, None
 
 
+def from_script():
+    """הבקשה נשלחה מהדף בלי טעינה מחדש (EDIT_JS), ולכן התשובה היא JSON ולא מעבר לדף."""
+    return request.headers.get("X-Requested-With") == "fetch"
+
+
+def edit_done(playlist_id, ok):
+    if from_script():
+        return {"ok": ok}, (200 if ok else 400)
+    return redirect(f"/playlist/{playlist_id}")
+
+
 def parse_position(value, total):
     """מספר מקום בפלייליסט, אם הוא בטווח. אחרת None."""
     try:
@@ -152,7 +164,7 @@ def playlist_row(playlist_id, position, track, count, token):
         cover_html = cover(image_url((track.get("album") or {}).get("images")))
         remove_extra = f'<input type="hidden" name="uri" value="{escape(track["uri"])}">'
     return (
-        f"<li>{cover_html}<div class=\"info\">{info}</div>"
+        f'<li data-position="{position}">{cover_html}<div class="info">{info}</div>'
         + button("move", "▲", '<input type="hidden" name="direction" value="up">', disabled=position == 0)
         + button("move", "▼", '<input type="hidden" name="direction" value="down">', disabled=position == count - 1)
         + button("remove", "✕", remove_extra)
@@ -171,12 +183,13 @@ def edit_playlist(playlist_id):
     tracks = playlist_tracks(sp, playlist_id)
     token = csrf_token()
     rows = "".join(playlist_row(playlist_id, i, t, len(tracks), token) for i, t in enumerate(tracks))
+    size = f'<span id="pl-size">{playlist_size(playlist)}</span>'
     return page(
-        _("<h1>{a0}</h1><p class=\"note\">{a1} שירים. הזיזו שירים למעלה ולמטה, או הסירו אותם.</p><form method=\"post\" action=\"/playlist/{a2}/rename\" class=\"toolbar\"><input type=\"hidden\" name=\"csrf\" value=\"{a3}\"><label class=\"field\">שם חדש<input type=\"text\" name=\"name\" value=\"{a4}\" maxlength=\"100\"></label><button class=\"btn secondary\" type=\"submit\">שמירת השם</button></form>", a0=escape(playlist['name']), a1=playlist_size(playlist), a2=escape(playlist_id), a3=token, a4=escape(playlist["name"]))
-        + (f'<ul class="list cols">{rows}</ul>' if rows else _('<p class="note">הפלייליסט ריק.</p>'))
+        _("<h1>{a0}</h1><p class=\"note\">{a1} שירים. הזיזו שירים למעלה ולמטה, או הסירו אותם.</p><form method=\"post\" action=\"/playlist/{a2}/rename\" class=\"toolbar\"><input type=\"hidden\" name=\"csrf\" value=\"{a3}\"><label class=\"field\">שם חדש<input type=\"text\" name=\"name\" value=\"{a4}\" maxlength=\"100\"></label><button class=\"btn secondary\" type=\"submit\">שמירת השם</button></form>", a0=escape(playlist['name']), a1=size, a2=escape(playlist_id), a3=token, a4=escape(playlist["name"]))
+        + (f'<ul class="list cols" id="pl-edit">{rows}</ul>' if rows else _('<p class="note">הפלייליסט ריק.</p>'))
         + _("<form method=\"post\" action=\"/playlist/{a0}/unfollow\" class=\"card\" onsubmit=\"return confirm('להסיר את הפלייליסט מהחשבון שלכם?')\"><input type=\"hidden\" name=\"csrf\" value=\"{a1}\"><p class=\"note\">ספוטיפיי לא מאפשר למחוק פלייליסט לגמרי דרך האפליקציה. הסרה תוציא אותו מהחשבון שלכם.</p><button class=\"btn secondary\" type=\"submit\">הסרה מהחשבון</button></form>", a0=escape(playlist_id), a1=token)
         + _('<p><a href="/my-playlists">לרשימת הפלייליסטים</a></p>'),
-        title=playlist["name"], wide=True,
+        title=playlist["name"], wide=True, script=EDIT_JS,
     )
 
 
@@ -205,11 +218,12 @@ def remove_from_playlist(playlist_id):
         return error
     position = parse_position(request.form.get("position"), playlist_size(playlist))
     uri = request.form.get("uri", "")
-    if position is not None and uri.startswith("spotify:track:"):
+    ok = position is not None and uri.startswith("spotify:track:")
+    if ok:
         # ספוטיפיי מסיר רק אם השיר נמצא במקום הזה, כך שלא נמחק שיר אחר בטעות
         sp.playlist_remove_specific_occurrences_of_items(playlist_id, [{"uri": uri, "positions": [position]}])
         forget_app_playlists(sp)
-    return redirect(f"/playlist/{playlist_id}")
+    return edit_done(playlist_id, ok)
 
 
 @app.route("/playlist/<playlist_id>/move", methods=["POST"])
@@ -228,7 +242,9 @@ def move_in_playlist(playlist_id):
         sp.playlist_reorder_items(playlist_id, position, position - 1)
     elif position is not None and direction == "down" and position < total - 1:
         sp.playlist_reorder_items(playlist_id, position, position + 2)
-    return redirect(f"/playlist/{playlist_id}")
+    else:
+        return edit_done(playlist_id, False)
+    return edit_done(playlist_id, True)
 
 
 @app.route("/playlist/<playlist_id>/unfollow", methods=["POST"])

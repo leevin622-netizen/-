@@ -131,6 +131,12 @@ class FakeSpotify:
         return {"id": playlist_id, "name": "My Mix", "owner": {"id": "tester"}, "images": [],
                 "description": engine.PLAYLIST_DESCRIPTION, "items": {"total": 3}, "followers": {"total": 5}}
 
+    def playlist_reorder_items(self, playlist_id, range_start, insert_before):
+        self.calls.append(("reorder", range_start, insert_before))
+
+    def playlist_remove_specific_occurrences_of_items(self, playlist_id, items):
+        self.calls.append(("remove", items[0]["uri"], items[0]["positions"][0]))
+
     def playlist_items(self, playlist_id, limit=100, offset=0, fields=None, market=None, additional_types=None):
         return {"items": [{"track": t} for t in self.tracks[:3]] if offset == 0 else [], "next": None}
 
