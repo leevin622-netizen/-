@@ -1,0 +1,6 @@
+# בדיקת קוד: שמות לא מוגדרים, ייבואים ומשתנים שלא בשימוש, ושגיאות תחביר (כללי F של pyflakes, ו-E9)
+line-length = 130
+extend-exclude = ["venv", "cache", "logs"]
+
+[lint]
+select = ["F", "E9"]

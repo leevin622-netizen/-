@@ -378,6 +378,5 @@ TRANSLATIONS = {
     '<h1>משהו השתבש</h1><p class="note">קרתה תקלה אצלנו. נסו שוב בעוד רגע, או <a href="/">חזרו לדף הבית</a>.</p>': {'en': '<h1>Something went wrong</h1><p class="note">We hit a problem. Try again in a moment, or <a href="/">go back to the home page</a>.</p>'},
     'לסמן את {a0}': {'en': 'Select {a0}'},
     'השמעת קטע מ{a0}': {'en': 'Play a clip of {a0}'},
-    'פתיחה בספוטיפיי': {'en': 'Open in Spotify'},
     '<noscript><p class="note">כדי לראות את הרשימה צריך לאפשר JavaScript בדפדפן.</p></noscript>': {'en': '<noscript><p class="note">Turn on JavaScript in your browser to see the list.</p></noscript>'},
 }

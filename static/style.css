@@ -93,6 +93,12 @@ details.more-options[open] summary { margin-bottom: 12px; }
   color: var(--text); font-size: 15px; font-family: inherit; cursor: pointer;
 }
 .chip[aria-pressed=true] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+/* בטלפון: כל קבוצת סינון בשורה אחת שגוללים הצידה, כדי שהפלייליסטים יופיעו כבר במסך הראשון */
+@media (max-width: 600px) {
+  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; }
+}
 .pl-card[hidden] { display: none; }
 .pl-card .rank { color: var(--soft); font-size: 14px; min-width: 2.2em; text-align: center; flex: none; }
 .pl-card .btn { width: auto; padding: 8px 14px; font-size: 14px; flex: none; }

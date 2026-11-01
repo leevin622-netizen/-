@@ -175,3 +175,23 @@ def test_preview_lookups_are_limited(logged_in, monkeypatch):
     monkeypatch.setattr(routes_library, "preview_url", lambda artist, title: "")
     codes = [client.get("/preview?artist=a&title=b").status_code for _ in range(61)]
     assert codes[:60] == [200] * 60 and codes[60] == 429
+
+
+def test_login_is_remembered_for_30_days(client, monkeypatch):
+    import routes_home
+    with client.session_transaction() as s:
+        s["oauth_state"] = "st"
+
+    class Auth:
+        def get_access_token(self, code, check_cache=False):
+            return {"access_token": "a", "refresh_token": "r", "expires_at": time.time() + 3600}
+
+    class Client:
+        def current_user(self):
+            return {"id": "u1", "display_name": "U"}
+    monkeypatch.setattr(routes_home, "make_auth", lambda: Auth())
+    monkeypatch.setattr(routes_home, "user_client", lambda token: Client())
+    response = client.get("/callback?code=c&state=st")
+    assert response.status_code == 302
+    cookie = response.headers["Set-Cookie"]
+    assert "Expires=" in cookie and "HttpOnly" in cookie

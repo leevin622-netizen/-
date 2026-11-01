@@ -289,6 +289,7 @@ def callback():
     except SpotifyOauthError:
         return page(_('<p>ההתחברות נכשלה. <a href="/login">נסו שוב</a>.</p>')), 400
     session["token_info"] = token_info
+    session.permanent = True
     user = user_client(token_info["access_token"]).current_user()
     session["user_name"] = user.get("display_name") or ""
     session["user_id"] = user["id"]

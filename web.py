@@ -3,6 +3,7 @@
 הסגנון של המשתמש (וייב), מבנה העמוד (page) ורכיבי HTML משותפים. הדפים עצמם בקבצי routes_*.py.
 """
 import gzip
+from datetime import timedelta
 import hashlib
 import os
 import secrets
@@ -37,7 +38,11 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET") or secrets.token_hex(32)
 
 
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+# ההתחברות נשמרת 30 יום, ולא נמחקת כשסוגרים את הדפדפן. כל כניסה מאריכה אותה
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30), SESSION_REFRESH_EACH_REQUEST=True,
+)
 # העיצוב בקובץ static/style.css. הדפדפן שומר אותו לשנה, והגרסה בכתובת (לפי התוכן) מתחלפת כשהוא משתנה
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 365 * 24 * 60 * 60
 with open(os.path.join(app.static_folder, "style.css"), "rb") as _style:
