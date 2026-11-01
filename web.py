@@ -132,11 +132,29 @@ def check_rate_limit():
         )
 
 
+# מה הדף רשאי לטעון. סקריפטים וסגנונות רק מהאתר (גם בתוך העמוד, כי כך הוא בנוי), תמונות מכל https
+# (עטיפות ותמונות אמנים), קטעי שמע מ-Deezer ו-iTunes, ונגן של ספוטיפיי. בקשות fetch רק לאתר עצמו
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "media-src https:",
+    "frame-src https://open.spotify.com",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+
 @app.after_request
 def security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    response.headers["Content-Security-Policy"] = CSP
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
     response.headers["Referrer-Policy"] = "same-origin"
     if PUBLIC_HTTPS:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"

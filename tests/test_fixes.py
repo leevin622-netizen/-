@@ -203,3 +203,12 @@ def test_health_answers_without_spotify_and_does_not_pause_background(client, mo
     response = client.get("/health")
     assert response.status_code == 200 and response.data == b"ok"
     assert not build_playlists.users_active()
+
+
+def test_security_policy_headers(client):
+    response = client.get("/")
+    csp = response.headers["Content-Security-Policy"]
+    for part in ("default-src 'self'", "connect-src 'self'", "object-src 'none'", "frame-ancestors 'none'",
+                 "frame-src https://open.spotify.com"):
+        assert part in csp
+    assert "camera=()" in response.headers["Permissions-Policy"]

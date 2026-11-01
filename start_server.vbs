@@ -17,6 +17,18 @@ python = folder & "\venv\Scripts\python.exe"
 If Not fso.FileExists(python) Then WScript.Quit 1
 If Not fso.FolderExists(folder & "\logs") Then fso.CreateFolder(folder & "\logs")
 
+' The log keeps growing while the server runs. Over 5 MB, it becomes server.old.log (replacing the
+' previous old one) and a new log starts, so at most about 10 MB of logs are kept.
+Dim logPath, oldPath
+logPath = folder & "\logs\server.log"
+oldPath = folder & "\logs\server.old.log"
+If fso.FileExists(logPath) Then
+  If fso.GetFile(logPath).Size > 5 * 1024 * 1024 Then
+    If fso.FileExists(oldPath) Then fso.DeleteFile oldPath, True
+    fso.MoveFile logPath, oldPath
+  End If
+End If
+
 ' waitress is a production WSGI server, steadier than the Flask development server.
 ' It listens on 127.0.0.1 only, so other computers on the network cannot reach it directly.
 ' 8 threads: a page that waits for Spotify (up to 10 seconds) does not hold up everyone else.
