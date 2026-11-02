@@ -108,7 +108,18 @@ details.more-options[open] summary { margin-bottom: 12px; }
 .stats b { display: block; font-size: 26px; line-height: 1.2; }
 .stats span { color: var(--muted); font-size: 14px; }
 input.search { margin-bottom: 12px; }
-.table-wrap { overflow-x: auto; border-radius: 16px; background: var(--card); border: 1px solid var(--border); }
+.table-wrap { overflow-x: auto; border-radius: 16px; border: 1px solid var(--border); background-color: var(--card); }
+/* צל בקצה שיש מעבר לו עוד עמודות: רואים שאפשר להחליק לצדדים. נעלם כשמגיעים לקצה */
+.table-wrap {
+  background-image:
+    linear-gradient(to right, var(--card) 30%, transparent), linear-gradient(to left, var(--card) 30%, transparent),
+    radial-gradient(farthest-side at 0 50%, rgba(255, 255, 255, .22), transparent),
+    radial-gradient(farthest-side at 100% 50%, rgba(255, 255, 255, .22), transparent);
+  background-position: left center, right center, left center, right center;
+  background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { padding: 7px 8px; text-align: start; border-bottom: 1px solid var(--border); white-space: nowrap; }
 th { color: var(--muted); font-weight: 600; font-size: 13px; cursor: pointer; user-select: none; position: sticky; top: 0; background: #1b1c22; }
