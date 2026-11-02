@@ -123,6 +123,8 @@ td input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent)
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
 .toolbar label.field { flex: 1; min-width: 200px; margin: 0; }
 .toolbar .btn { width: auto; padding: 11px 20px; font-size: 15px; }
+/* כפתורי השמירה נשארים בתחתית המסך, כדי שלא צריך לגלול עד סוף רשימה ארוכה */
+.savebar { position: sticky; bottom: 0; z-index: 5; padding: 10px; margin-inline: -10px; background: var(--card); border-top: 1px solid var(--border); backdrop-filter: blur(8px); }
 .btn.secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
 .btn.secondary:hover { border-color: var(--accent); }
 a.sp { color: inherit; text-decoration: none; }

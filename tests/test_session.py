@@ -78,3 +78,12 @@ def test_expired_token_is_refreshed_and_revoked_one_logs_out(monkeypatch):
         monkeypatch.setattr(web, "make_auth", lambda: Auth(expired=True, fail=True))
         assert web.get_spotify_client() is None
         assert "token_info" not in web.session
+
+
+def test_hebrew_prints_do_not_crash_with_a_windows_console_encoding():
+    import subprocess
+    import sys
+    code = "import app; print('שלום')"
+    env = {**__import__("os").environ, "PYTHONUTF8": "0", "PYTHONIOENCODING": "cp1252", "PLAYLISTOR_NO_REFRESH": "1"}
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, env=env, cwd=str(__import__("pathlib").Path(__file__).parent.parent))
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
