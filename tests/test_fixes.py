@@ -288,3 +288,17 @@ def test_blocked_page_reloads_itself_when_block_ends(logged_in):
     html = response.get_data(as_text=True)
     assert response.status_code == 429
     assert "ייטען מחדש לבד" in html and "location.reload()" in html
+
+
+def test_swallowed_429_still_stops_further_requests(monkeypatch):
+    import spotipy
+
+    def limited(self, method, url, payload, params):
+        raise spotipy.SpotifyException(429, -1, "limited", headers={"Retry-After": "900"})
+    monkeypatch.setattr(spotipy.Spotify, "_internal_call", limited)
+    sp = web.user_client("token")
+    try:
+        sp.current_user()
+    except spotipy.SpotifyException:
+        pass  # כמו auto_vibe, שבולע את השגיאה
+    assert 800 < web.limited_until() - time.time() <= 1000

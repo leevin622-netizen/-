@@ -247,7 +247,13 @@ class GuardedSpotify(spotipy.Spotify):
         left = int(limited_until() - time.time())
         if left > 0:
             raise spotipy.SpotifyException(429, -1, f"{url}: blocked for {left} s", headers={"Retry-After": str(left)})
-        return super()._internal_call(method, url, payload, params)
+        try:
+            return super()._internal_call(method, url, payload, params)
+        except spotipy.SpotifyException as error:
+            # גם כשהקוד שקורא בולע את השגיאה (למשל עיצוב הדף), ההגבלה נזכרת ושאר הבקשות נעצרות
+            if error.http_status == 429:
+                remember_limit(error)
+            raise
 
 
 def user_client(access_token):
