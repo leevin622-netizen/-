@@ -212,3 +212,34 @@ def test_security_policy_headers(client):
                  "frame-src https://open.spotify.com"):
         assert part in csp
     assert "camera=()" in response.headers["Permissions-Policy"]
+
+
+def test_no_spotify_requests_while_blocked(monkeypatch):
+    import requests
+    import spotipy
+    sent = []
+    monkeypatch.setattr(requests.Session, "request", lambda *a, **k: sent.append(a) or (_ for _ in ()).throw(
+        requests.ConnectionError("offline")))
+    build_playlists.remember_block(3000)
+    sp = web.user_client("token")
+    try:
+        sp.current_user()
+        raise AssertionError("should fail")
+    except spotipy.SpotifyException as error:
+        assert error.http_status == 429 and 2900 < int(error.headers["Retry-After"]) <= 3060
+    assert sent == []
+
+
+def test_requests_go_through_when_not_blocked(monkeypatch):
+    import requests
+    sent = []
+
+    def fake(*args, **kwargs):
+        sent.append(1)
+        raise requests.ConnectionError("offline")
+    monkeypatch.setattr(requests.Session, "request", fake)
+    try:
+        web.user_client("token").current_user()
+    except requests.ConnectionError:
+        pass
+    assert sent == [1]

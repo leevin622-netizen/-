@@ -236,12 +236,26 @@ def get_spotify_client():
     return user_client(token_info["access_token"])
 
 
+class GuardedSpotify(spotipy.Spotify):
+    """
+    לקוח שלא שולח בקשות בזמן חסימה ידועה של ספוטיפיי. במקום זה הוא נכשל מיד כמו ספוטיפיי (429),
+    וכל מה שכבר מטפל בהגבלה ממשיך לעבוד: נתונים שמורים מוצגים עם הודעה, וחיפוש מדלג על מונחים.
+    בקשות בזמן חסימה רק נכשלות, ועלולות להאריך אותה.
+    """
+
+    def _internal_call(self, method, url, payload, params):
+        left = int(limited_until() - time.time())
+        if left > 0:
+            raise spotipy.SpotifyException(429, -1, f"{url}: blocked for {left} s", headers={"Retry-After": str(left)})
+        return super()._internal_call(method, url, payload, params)
+
+
 def user_client(access_token):
     """
     לקוח ספוטיפיי למשתמש. retries=0: כשספוטיפיי מבקש להמתין שעות, המשתמש מקבל הודעה מיד,
     ולא נשאר תקוע (ברירת המחדל של spotipy מחכה כמה שספוטיפיי מבקש, גם שעות).
     """
-    return spotipy.Spotify(auth=access_token, language="he", retries=0, requests_timeout=10)
+    return GuardedSpotify(auth=access_token, language="he", retries=0, requests_timeout=10)
 
 
 def local_path(value):
