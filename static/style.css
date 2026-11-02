@@ -130,7 +130,7 @@ td.name { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
 td.short { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 td.muted { color: var(--muted); }
 tr:hover td { background: var(--card-hover); }
-td input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+td input[type=checkbox] { width: 24px; height: 24px; accent-color: var(--accent); }
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
 .toolbar label.field { flex: 1; min-width: 200px; margin: 0; }
 .toolbar .btn { width: auto; padding: 11px 20px; font-size: 15px; }
@@ -146,7 +146,7 @@ a.sp:hover { color: var(--accent); text-decoration: underline; }
 .vibe-switch { margin: 0; }
 .lang-switch { display: flex; align-items: center; gap: 4px; }
 .vibe-switch select {
-  display: block; width: auto; max-width: 140px; margin: 0; padding: 6px 10px; font-size: 14px;
+  display: block; width: auto; max-width: 140px; min-height: 40px; margin: 0; padding: 6px 10px; font-size: 14px;
   border-radius: 999px;
 }
 .vibe-switch .btn { width: auto; padding: 5px 10px; font-size: 13px; }
@@ -160,7 +160,7 @@ a.sp:hover { color: var(--accent); text-decoration: underline; }
   background: var(--card-hover); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-family: inherit;
 }
 .play { min-width: 44px; min-height: 44px; padding: 6px 10px; font-size: 16px; flex: none; }
-td .play { min-width: 34px; min-height: 34px; padding: 2px 8px; font-size: 13px; }
+td .play { min-width: 40px; min-height: 40px; padding: 2px 8px; font-size: 13px; }
 .play.playing { background: var(--accent); color: var(--on-accent); }
 .play.loading { opacity: .6; cursor: progress; }
 .play.none { opacity: .35; cursor: default; }
