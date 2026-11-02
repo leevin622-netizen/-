@@ -158,8 +158,8 @@ class FakeSpotify:
         self.calls.append(("create", name))
         return {"id": "newplaylist", "external_urls": {"spotify": "https://open.spotify.com/playlist/new"}}
 
-    def playlist_add_items(self, playlist_id, items):
-        self.calls.append(("add", playlist_id, len(items)))
+    def playlist_add_items(self, playlist_id, items, position=None):
+        self.calls.append(("add", playlist_id, len(items)) if position is None else ("add", playlist_id, len(items), position))
 
 
 @pytest.fixture

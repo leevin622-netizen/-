@@ -380,4 +380,7 @@ TRANSLATIONS = {
     'השמעת קטע מ{a0}': {'en': 'Play a clip of {a0}'},
     '<noscript><p class="note">כדי לראות את הרשימה צריך לאפשר JavaScript בדפדפן.</p></noscript>': {'en': '<noscript><p class="note">Turn on JavaScript in your browser to see the list.</p></noscript>'},
     '<p>לא הצלחנו לטעון את העמוד כרגע. הוא ייטען מחדש לבד ב-{a0}, כשספוטיפיי יאפשר שוב.</p>': {'en': '<p>We could not load this page right now. It will reload by itself at {a0}, when Spotify allows it again.</p>'},
+    '<summary>איך משתמשים בדף הזה?</summary>': {'en': '<summary>How to use this page</summary>'},
+    'הוסר: {a0}': {'en': 'Removed: {a0}'},
+    'ביטול': {'en': 'Undo'},
 }

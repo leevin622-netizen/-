@@ -62,7 +62,10 @@ def saved_tracks():
     return page(
         _("<h1>כל השירים שאהבתי</h1>")
         + stat_boxes([(_("שירים"), len(tracks)), (_("אמנים"), artists_count), (_("שעות האזנה ברשימה"), f"{total_hours:.1f}")])
-        + note
+        + '<details class="more-options help">' + _('<summary>איך משתמשים בדף הזה?</summary>') + note
+        + _('<p class="note">טיפ: חפשו אמן או אלבום, לחצו "סמן את כל המוצגים", ואז "צור פלייליסט". ')
+        + _('לפלייליסט לפי ז\'אנר או מצב רוח מתוך השירים שאהבתם, השתמשו ב<a href="/build">יצירת פלייליסט</a>.</p>')
+        + '</details>'
         + _('<input type="text" class="search" data-table="tracks" placeholder="חיפוש שיר, אמן או אלבום...">')
         + '<form method="post" action="/save">'
         + '<div class="toolbar">'
@@ -71,8 +74,6 @@ def saved_tracks():
         + _('<button type="button" class="btn secondary" data-check-visible="tracks">סמן את כל המוצגים</button>')
         + _('<button type="submit" class="btn">צור פלייליסט מהמסומנים</button>')
         + "</div>"
-        + _('<p class="note">טיפ: חפשו אמן או אלבום, לחצו "סמן את כל המוצגים", ואז "צור פלייליסט". ')
-        + _('לפלייליסט לפי ז\'אנר או מצב רוח מתוך השירים שאהבתם, השתמשו ב<a href="/build">יצירת פלייליסט</a>.</p>')
         + f'<div class="table-wrap"><table id="tracks" class="sortable numbered"><thead>{header(columns)}</thead>'
         + "<tbody></tbody></table></div>"
         + _('<noscript><p class="note">כדי לראות את הרשימה צריך לאפשר JavaScript בדפדפן.</p></noscript>')

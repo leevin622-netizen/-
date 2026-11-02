@@ -342,9 +342,15 @@ EDIT_JS = """
 (function () {
   // עריכת פלייליסט בלי לטעון את הדף מחדש: הזזה והסרה נשלחות ברקע, והרשימה מתעדכנת במקום.
   // כל שינוי מחכה שהקודם יסתיים, כי המיקומים משתנים אחרי כל הזזה
+  var T = __T__;
   var list = document.getElementById("pl-edit");
   if (!list) return;
   var size = document.getElementById("pl-size"), busy = false;
+  var bar = document.createElement("div"), pending = null, timer = null;
+  bar.className = "undo-bar";
+  bar.setAttribute("role", "status");
+  bar.hidden = true;
+  list.parentNode.insertBefore(bar, list);
   function renumber() {
     var rows = list.children;
     Array.prototype.forEach.call(rows, function (li, i) {
@@ -356,11 +362,59 @@ EDIT_JS = """
     });
     if (size) size.textContent = rows.length;
   }
+  function clearUndo() {
+    pending = null;
+    clearTimeout(timer);
+    bar.hidden = true;
+    bar.textContent = "";
+  }
+  // אחרי הסרה אפשר לבטל: השיר חוזר למקום שבו היה. כל פעולה אחרת מבטלת את האפשרות, כי המיקומים משתנים
+  function offerUndo(li, form) {
+    clearUndo();
+    var title = li.querySelector(".title");
+    pending = {
+      li: li, index: Number(form.elements.position.value), uri: form.elements.uri.value,
+      csrf: form.elements.csrf.value, url: form.action.replace(/remove$/, "restore")
+    };
+    var text = document.createElement("span");
+    text.textContent = T.removed.replace("{a0}", title ? title.textContent : "");
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn secondary";
+    button.textContent = T.undo;
+    button.addEventListener("click", undo);
+    bar.appendChild(text);
+    bar.appendChild(button);
+    bar.hidden = false;
+    timer = setTimeout(clearUndo, 10000);
+  }
+  function undo() {
+    if (busy || !pending) return;
+    busy = true;
+    var item = pending, body = new FormData();
+    body.append("csrf", item.csrf);
+    body.append("uri", item.uri);
+    body.append("position", item.index);
+    fetch(item.url, {method: "POST", body: body, headers: {"X-Requested-With": "fetch"}})
+      .then(function (r) { return r.ok ? r.json() : {ok: false}; })
+      .then(function (r) {
+        if (!r.ok) throw new Error("failed");
+        list.insertBefore(item.li, list.children[item.index] || null);
+        clearUndo();
+        renumber();
+      })
+      .catch(function () {
+        alert(T.failed);
+        location.reload();
+      })
+      .then(function () { busy = false; });
+  }
   list.addEventListener("submit", function (event) {
     var form = event.target;
     event.preventDefault();
     if (busy) return;
     busy = true;
+    clearUndo();
     var li = form.closest("li");
     var direction = form.elements.direction ? form.elements.direction.value : "";
     li.classList.add("saving");
@@ -370,6 +424,7 @@ EDIT_JS = """
         if (!r.ok) throw new Error("failed");
         if (form.action.endsWith("/remove")) {
           li.remove();
+          offerUndo(li, form);
         } else if (direction === "up" && li.previousElementSibling) {
           list.insertBefore(li, li.previousElementSibling);
         } else if (direction === "down" && li.nextElementSibling) {
@@ -378,7 +433,7 @@ EDIT_JS = """
         renumber();
       })
       .catch(function () {
-        alert("לא הצלחנו לשמור את השינוי. הדף ייטען מחדש.");
+        alert(T.failed);
         location.reload();
       })
       .then(function () { busy = false; li.classList.remove("saving"); });

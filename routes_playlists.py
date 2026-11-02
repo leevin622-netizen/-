@@ -1,6 +1,7 @@
 """
 הפלייליסטים שיצרתי ועריכה שלהם: שינוי שם, הזזה והסרה של שירים, והסרה מהחשבון.
 """
+import json
 from html import escape
 from flask import redirect, request
 from i18n import _
@@ -176,6 +177,13 @@ def playlist_row(playlist_id, position, track, count, token):
     )
 
 
+def edit_texts():
+    return {
+        "removed": _("הוסר: {a0}"), "undo": _("ביטול"),
+        "failed": _("לא הצלחנו לשמור את השינוי. הדף ייטען מחדש."),
+    }
+
+
 @app.route("/playlist/<playlist_id>")
 def edit_playlist(playlist_id):
     sp = web.get_spotify_client()
@@ -193,7 +201,7 @@ def edit_playlist(playlist_id):
         + (f'<ul class="list cols" id="pl-edit">{rows}</ul>' if rows else _('<p class="note">הפלייליסט ריק.</p>'))
         + _("<form method=\"post\" action=\"/playlist/{a0}/unfollow\" class=\"card\" onsubmit=\"return confirm('להסיר את הפלייליסט מהחשבון שלכם?')\"><input type=\"hidden\" name=\"csrf\" value=\"{a1}\"><p class=\"note\">ספוטיפיי לא מאפשר למחוק פלייליסט לגמרי דרך האפליקציה. הסרה תוציא אותו מהחשבון שלכם.</p><button class=\"btn secondary\" type=\"submit\">הסרה מהחשבון</button></form>", a0=escape(playlist_id), a1=token)
         + _('<p><a href="/my-playlists">לרשימת הפלייליסטים</a></p>'),
-        title=playlist["name"], wide=True, script=EDIT_JS,
+        title=playlist["name"], wide=True, script=EDIT_JS.replace("__T__", json.dumps(edit_texts(), ensure_ascii=False)),
     )
 
 
@@ -226,6 +234,25 @@ def remove_from_playlist(playlist_id):
     if ok:
         # ספוטיפיי מסיר רק אם השיר נמצא במקום הזה, כך שלא נמחק שיר אחר בטעות
         sp.playlist_remove_specific_occurrences_of_items(playlist_id, [{"uri": uri, "positions": [position]}])
+        forget_app_playlists(sp)
+    return edit_done(playlist_id, ok)
+
+
+@app.route("/playlist/<playlist_id>/restore", methods=["POST"])
+def restore_to_playlist(playlist_id):
+    """ביטול הסרה: מחזיר את השיר למקום שבו היה."""
+    sp = web.get_spotify_client()
+    if sp is None:
+        return redirect("/login")
+    playlist, error = editable_or_404(sp, playlist_id)
+    if error:
+        return error
+    # אחרי ההסרה הרשימה קצרה ב-1, ולכן המקום יכול להיות גם בסוף הרשימה
+    position = parse_position(request.form.get("position"), playlist_size(playlist) + 1)
+    uri = request.form.get("uri", "")
+    ok = position is not None and uri.startswith("spotify:track:") and playlist_size(playlist) < MAX_TRACKS * 2
+    if ok:
+        sp.playlist_add_items(playlist_id, [uri], position=position)
         forget_app_playlists(sp)
     return edit_done(playlist_id, ok)
 

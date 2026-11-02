@@ -60,6 +60,11 @@ label.check { display: flex; gap: 10px; align-items: center; margin-bottom: 16px
 label.check input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
 details.card summary { cursor: pointer; font-weight: 600; }
 details.more-options { margin: 0 0 18px; }
+details.help { margin: 0 0 14px; }
+details.help summary { color: var(--muted); font-weight: 400; }
+.undo-bar { position: sticky; top: 8px; z-index: 6; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 10px 14px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 12px; }
+.undo-bar[hidden] { display: none; }
+.undo-bar .btn { width: auto; padding: 8px 18px; }
 details.more-options summary { cursor: pointer; font-weight: 600; font-size: 16px; padding: 10px 0; }
 details.more-options summary .hint { display: block; color: var(--soft); font-size: 14px; font-weight: 400; }
 details.more-options[open] summary { margin-bottom: 12px; }
