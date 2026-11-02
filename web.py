@@ -690,6 +690,10 @@ def notices():
     return "".join(f'<div class="warn">{escape(note)}</div>' for note in notes)
 
 
+# עד כמה זמן שווה להשאיר דף פתוח שיטען את עצמו מחדש כשההגבלה של ספוטיפיי נגמרת
+AUTO_RELOAD_SECONDS = 3 * 60 * 60
+
+
 @app.errorhandler(spotipy.SpotifyException)
 def spotify_error(error):
     if error.http_status == 401:
@@ -698,6 +702,14 @@ def spotify_error(error):
     if error.http_status == 429:
         remember_limit(error)
         # ההודעה עם השעה מופיעה מעל העמוד (notices), כאן רק מה שקרה
+        left = limited_until() - time.time()
+        if request.method == "GET" and 0 < left <= AUTO_RELOAD_SECONDS:
+            # הדף נטען מחדש לבד כשההגבלה נגמרת (רק GET: טעינה מחדש של טופס הייתה שולחת אותו שוב)
+            return page(
+                _("<p>לא הצלחנו לטעון את העמוד כרגע. הוא ייטען מחדש לבד ב-{a0}, כשספוטיפיי יאפשר שוב.</p>",
+                  a0=clock(limited_until())),
+                script=f"setTimeout(function () {{ location.reload(); }}, {int(left + 30) * 1000});",
+            ), 429
         return page(_("<p>לא הצלחנו לטעון את העמוד כרגע. אפשר לחזור לדף הבית ולנסות שוב אחרי ההמתנה.</p>")), 429
     return page(_("<p>ספוטיפיי החזיר שגיאה. נסו שוב בעוד כמה רגעים.</p>")), 502
 

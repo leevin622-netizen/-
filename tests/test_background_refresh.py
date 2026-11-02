@@ -108,3 +108,62 @@ def test_block_hit_by_a_user_stops_background_and_shows_notice(logged_in, monkey
     assert build_playlists.blocked_until() > time.time() + 79000
     assert web.limited_until() > time.time() + 79000
     assert "ספוטיפיי הגביל" in client.get("/build").get_data(as_text=True)
+
+
+class CatalogSpotify:
+    """ספוטיפיי מזויף לבניית הקטלוג: חיפוש פלייליסטים ומספר עוקבים."""
+
+    def __init__(self):
+        self.calls = []
+
+    def search(self, q, type="playlist", market=None, limit=10, offset=0):
+        self.calls.append(("search", q, market, offset))
+        if offset:
+            return {"playlists": {"items": []}}
+        hebrew = market == "IL"
+        return {"playlists": {"items": [
+            None,  # ספוטיפיי מחזיר לפעמים ערכים ריקים
+            {"id": f"{market}{q}1", "name": "להיטים" if hebrew else "Top Hits", "owner": {"display_name": "o"},
+             "description": "", "images": [{"url": "https://img/1"}]},
+            {"id": f"{market}{q}2", "name": "Éxitos", "owner": {"display_name": "o"}, "description": "", "images": []},
+            {"id": f"{market}{q}gone", "name": "Gone Mix", "owner": {"display_name": "o"}, "description": "",
+             "images": []},
+        ]}}
+
+    def playlist(self, playlist_id, fields=None):
+        self.calls.append(("followers", playlist_id))
+        if playlist_id.endswith("gone"):
+            raise SpotifyException(404, -1, "not found")
+        return {"followers": {"total": 1000 if playlist_id.startswith("IL") else 50}}
+
+
+def test_full_catalog_run(monkeypatch):
+    import catalog
+    monkeypatch.setattr(build_index, "all_terms", lambda: [])
+    monkeypatch.setattr(catalog, "search_jobs", lambda: [("US", "hits", "hits"), ("IL", "israeli", "ישראלי")])
+    sp = CatalogSpotify()
+    assert build_playlists.run(sp, log=lambda text: None) is True
+    items = catalog.load()
+    names = [p["name"] for p in items]
+    assert names == ["להיטים", "Top Hits"]  # הכי הרבה עוקבים קודם; "Éxitos" לא באנגלית; "gone" נמחק
+    assert items[0]["markets"] == ["IL"] and items[0]["followers"] == 1000
+    assert not catalog.needs_refresh()
+    # הרצה שנייה לא מחפשת שוב: הכול כבר נאסף ומעודכן
+    sp.calls.clear()
+    build_playlists.run(sp, log=lambda text: None)
+    assert sp.calls == []
+
+
+def test_catalog_run_resumes_after_stop(monkeypatch):
+    import catalog
+    monkeypatch.setattr(build_index, "all_terms", lambda: [])
+    monkeypatch.setattr(catalog, "search_jobs", lambda: [("US", "hits", "a"), ("US", "pop", "b")])
+    monkeypatch.setattr(build_playlists, "REQUESTS_PER_RUN", 2)
+    sp = CatalogSpotify()
+    assert build_playlists.run(sp, log=lambda text: None) is False
+    first = len(sp.calls)
+    monkeypatch.setattr(build_playlists, "REQUESTS_PER_RUN", 100)
+    assert build_playlists.run(sp, log=lambda text: None) is True
+    searched = [c[1] for c in sp.calls if c[0] == "search" and c[3] == 0]
+    assert searched.count("a") == 1  # "a" הסתיים בהרצה הראשונה ולא חופש שוב
+    assert first == 2

@@ -93,9 +93,12 @@ class FakeSpotify:
         self.calls.append(("search", q, offset))
         if type == "playlist":
             return {"playlists": {"items": []}}
-        if type == "artist":
-            return {"artists": {"items": [dict(self.artist(1), name=q.strip('"'))]}}
-        return {"tracks": {"items": self.tracks[offset:offset + limit]}}
+        result = {}
+        if "artist" in type.split(","):
+            result["artists"] = {"items": [dict(self.artist(1), name=q.strip('"'))]}
+        if "track" in type.split(","):
+            result["tracks"] = {"items": self.tracks[offset:offset + limit]}
+        return result
 
     def current_user(self):
         return {"id": "tester", "display_name": "Tester"}
@@ -120,6 +123,12 @@ class FakeSpotify:
         more = offset + limit < len(self.tracks)
         return {"items": [{"added_at": "2026-01-01T00:00:00Z", "track": t} for t in page],
                 "next": "more" if more else None, "total": len(self.tracks)}
+
+    def user_follow_artists(self, ids):
+        self.calls.append(("follow_artist", ids[0]))
+
+    def current_user_saved_tracks_add(self, tracks):
+        self.calls.append(("save_track", tracks[0]))
 
     def current_user_saved_tracks_contains(self, tracks):
         return [False] * len(tracks)

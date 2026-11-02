@@ -273,3 +273,18 @@ def test_delete_data_forgets_created_playlists(logged_in):
     library.remember_created("tester", "p1")
     client.post("/delete-data", data={"csrf": csrf})
     assert library.created_playlists("tester") == set()
+
+
+def test_blocked_page_reloads_itself_when_block_ends(logged_in):
+    client, _sp, _csrf = logged_in
+    build_playlists.remember_block(1200)
+    real = web.get_spotify_client
+    web_client = web.user_client("token")
+    try:
+        web.get_spotify_client = lambda: web_client
+        response = client.get("/my-playlists")
+    finally:
+        web.get_spotify_client = real
+    html = response.get_data(as_text=True)
+    assert response.status_code == 429
+    assert "ייטען מחדש לבד" in html and "location.reload()" in html
