@@ -278,3 +278,9 @@ table.numbered tbody td:first-child::before {
   .bg-motion { display: none; }
 }
 #pl-edit li.saving { opacity: .55; }
+/* עריכת פלייליסט במסך צר: השם והאמן מקבלים שורה שלמה, והכפתורים יורדים לשורה מתחת */
+@media (max-width: 520px) {
+  #pl-edit li { flex-wrap: wrap; }
+  #pl-edit li .info { flex: 1 1 calc(100% - 90px); min-width: 0; }
+  #pl-edit li > .play { margin-inline-start: 74px; }
+}

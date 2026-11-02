@@ -8,8 +8,8 @@ from i18n import _
 import library
 import favourites
 import web
-from web import MAX_TRACKS, app, cover, csrf_token, image_url, page, spotify_link, user_id
-from scripts import EDIT_JS
+from web import MAX_TRACKS, app, cover, csrf_token, image_url, page, play_button, spotify_link, user_id
+from scripts import EDIT_JS, LAZY_PLAY_JS
 
 
 def playlist_size(playlist):
@@ -161,6 +161,7 @@ def playlist_row(playlist_id, position, track, count, token):
         info = _('<div class="title">שיר לא זמין</div>')
         cover_html = '<div class="noimg"></div>'
         remove_extra = ""
+        play = ""
     else:
         info = (
             f'<div class="title">{spotify_link(track["name"], "track", track.get("id"))}</div>'
@@ -168,8 +169,10 @@ def playlist_row(playlist_id, position, track, count, token):
         )
         cover_html = cover(image_url((track.get("album") or {}).get("images")))
         remove_extra = f'<input type="hidden" name="uri" value="{escape(track["uri"])}">'
+        artists = track.get("artists") or [{}]
+        play = play_button({"name": track["name"], "id": track.get("id"), "artist": artists[0].get("name", "")})
     return (
-        f'<li data-position="{position}">{cover_html}<div class="info">{info}</div>'
+        f'<li data-position="{position}">{cover_html}<div class="info">{info}</div>{play}'
         + button("move", "▲", '<input type="hidden" name="direction" value="up">', disabled=position == 0)
         + button("move", "▼", '<input type="hidden" name="direction" value="down">', disabled=position == count - 1)
         + button("remove", "✕", remove_extra)
@@ -201,7 +204,7 @@ def edit_playlist(playlist_id):
         + (f'<ul class="list cols" id="pl-edit">{rows}</ul>' if rows else _('<p class="note">הפלייליסט ריק.</p>'))
         + _("<form method=\"post\" action=\"/playlist/{a0}/unfollow\" class=\"card\" onsubmit=\"return confirm('להסיר את הפלייליסט מהחשבון שלכם?')\"><input type=\"hidden\" name=\"csrf\" value=\"{a1}\"><p class=\"note\">ספוטיפיי לא מאפשר למחוק פלייליסט לגמרי דרך האפליקציה. הסרה תוציא אותו מהחשבון שלכם.</p><button class=\"btn secondary\" type=\"submit\">הסרה מהחשבון</button></form>", a0=escape(playlist_id), a1=token)
         + _('<p><a href="/my-playlists">לרשימת הפלייליסטים</a></p>'),
-        title=playlist["name"], wide=True, script=EDIT_JS.replace("__T__", json.dumps(edit_texts(), ensure_ascii=False)),
+        title=playlist["name"], wide=True, script=EDIT_JS.replace("__T__", json.dumps(edit_texts(), ensure_ascii=False)) + LAZY_PLAY_JS,
     )
 
 

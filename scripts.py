@@ -423,6 +423,8 @@ EDIT_JS = """
       .then(function (r) {
         if (!r.ok) throw new Error("failed");
         if (form.action.endsWith("/remove")) {
+          var playing = li.querySelector(".play.playing");
+          if (playing) playing.click();
           li.remove();
           offerUndo(li, form);
         } else if (direction === "up" && li.previousElementSibling) {

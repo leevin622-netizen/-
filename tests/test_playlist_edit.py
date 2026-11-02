@@ -80,3 +80,11 @@ def test_edit_page_offers_undo_texts_in_both_languages(logged_in):
         s["lang"] = "en"
     html = client.get(BASE).get_data(as_text=True)
     assert "Removed: {a0}" in html and "Undo" in html
+
+
+def test_every_available_track_has_a_play_button_that_can_stop(logged_in):
+    client, _sp, _csrf = logged_in
+    html = client.get(BASE).get_data(as_text=True)
+    assert html.count('class="play"') == 3 and 'aria-pressed="false"' in html
+    assert 'data-title="Song 1"' in html and 'data-artist="Artist 1"' in html
+    assert 'classList.remove("playing")' in html  # סקריפט ההשמעה נטען: לחיצה שנייה עוצרת
