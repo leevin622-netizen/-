@@ -61,7 +61,9 @@ def temp_cache(tmp_path, monkeypatch):
     # בלי נתוני אווירה (ReccoBeats): הסינון לפי אווירה פשוט לא משנה כלום
     monkeypatch.setattr(engine, "get_features", lambda ids: {})
     for module in list(sys.modules.values()):
-        if getattr(module, "__file__", "") and module.__file__.startswith(ROOT) and hasattr(module, "get_features"):
+        # רק במי שמשתמש בה, לא ב-vibes עצמו (שם היא נבדקת עם רשת מזויפת)
+        if (getattr(module, "__file__", "") and module.__file__.startswith(ROOT) and hasattr(module, "get_features")
+                and module is not vibes):
             monkeypatch.setattr(module, "get_features", lambda ids: {})
 
 
