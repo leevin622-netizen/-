@@ -117,6 +117,7 @@ def get_similar_artists(artist_name, limit=10):
     ]
     return _similar_cache[artist_name]
 
+
 def _user_top(method, key, user, api_key, max_pages=5):
     """מביא את רשימת ה-top של משתמש ב-Last.fm, עמוד אחרי עמוד (עד 1000 פריטים בעמוד)."""
     items = []
