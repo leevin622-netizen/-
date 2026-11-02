@@ -1,5 +1,7 @@
+import json
 import os
 import pickle
+import threading
 import time
 
 import requests
@@ -66,6 +68,49 @@ def cached(user_id, key, loader):
     _cache[(user_id, key)] = (time.time(), value)
     _save_to_disk(user_id)
     return value
+
+
+# הפלייליסטים שנוצרו באתר, לכל משתמש. נשמר בנפרד מהמטמון, כי רענון והתנתקות לא אמורים למחוק אותו
+_created_lock = threading.Lock()
+
+
+def _created_file():
+    return os.path.join(CACHE_DIR, "created_playlists.json")
+
+
+def _read_created():
+    try:
+        with open(_created_file(), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_created(data):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    with open(_created_file(), "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+
+def remember_created(user_id, playlist_id):
+    with _created_lock:
+        data = _read_created()
+        ids = data.setdefault(user_id, [])
+        if playlist_id not in ids:
+            ids.append(playlist_id)
+        _write_created(data)
+
+
+def created_playlists(user_id):
+    return set(_read_created().get(user_id, []))
+
+
+def forget_created(user_id):
+    """במחיקת הנתונים של המשתמש מהשרת."""
+    with _created_lock:
+        data = _read_created()
+        if data.pop(user_id, None) is not None:
+            _write_created(data)
 
 
 def clear_cache(user_id):

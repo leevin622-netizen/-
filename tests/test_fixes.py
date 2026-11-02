@@ -243,3 +243,33 @@ def test_requests_go_through_when_not_blocked(monkeypatch):
     except requests.ConnectionError:
         pass
     assert sent == [1]
+
+
+def test_app_playlists_recognized_in_any_language():
+    import routes_playlists
+    for description in ("נוצר ב-פלייליסטור", "Created with Playlistor", "Creada con Playlistor",
+                        "Создано в Playlistor"):
+        assert routes_playlists.made_here({"id": "x", "description": description})
+    assert not routes_playlists.made_here({"id": "x", "description": "My own mix"})
+    assert routes_playlists.made_here({"id": "x", "description": None}, {"x"})
+
+
+def test_saved_playlist_listed_even_without_description(logged_in, monkeypatch):
+    client, sp, csrf = logged_in
+    client.post("/save", data={"csrf": csrf, "title": "T", "uri": ["spotify:track:1"]})
+    assert library.created_playlists("tester") == {"newplaylist"}
+    monkeypatch.setattr(sp, "current_user_playlists", lambda limit=50, offset=0: {"items": [
+        {"id": "newplaylist", "name": "Saved Here", "images": [], "owner": {"id": "tester"}, "description": "",
+         "items": {"total": 1}},
+        {"id": "other", "name": "Not Mine", "images": [], "owner": {"id": "tester"}, "description": "",
+         "items": {"total": 1}},
+    ], "next": None})
+    html = client.get("/my-playlists").get_data(as_text=True)
+    assert "Saved Here" in html and "Not Mine" not in html
+
+
+def test_delete_data_forgets_created_playlists(logged_in):
+    client, _sp, csrf = logged_in
+    library.remember_created("tester", "p1")
+    client.post("/delete-data", data={"csrf": csrf})
+    assert library.created_playlists("tester") == set()

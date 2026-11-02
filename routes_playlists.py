@@ -5,9 +5,7 @@ from html import escape
 from flask import redirect, request
 from i18n import _
 import library
-from translations import TRANSLATIONS
 import favourites
-from engine import PLAYLIST_DESCRIPTION
 import web
 from web import MAX_TRACKS, app, cover, csrf_token, image_url, page, spotify_link, user_id
 from scripts import EDIT_JS
@@ -26,24 +24,29 @@ def playlist_item_track(item):
     return item.get("item") or item.get("track")
 
 
-# התיאור שהאפליקציה כותבת בספוטיפיי, בכל שפה. לפיו מזהים פלייליסטים שנוצרו כאן
-DESCRIPTIONS = [PLAYLIST_DESCRIPTION] + list(TRANSLATIONS.get(PLAYLIST_DESCRIPTION, {}).values())
+# שם האתר מופיע בתיאור שהאפליקציה כותבת בספוטיפיי, בכל שפה שהייתה אי פעם בממשק
+# ("נוצר ב-פלייליסטור", "Created with Playlistor", "Creada con Playlistor" ועוד)
+APP_NAMES = ("פלייליסטור", "Playlistor")
 
 
-def made_here(playlist):
+def made_here(playlist, created=()):
+    """נוצר כאן: האתר זוכר שהוא שמר אותו, או ששם האתר מופיע בתיאור."""
+    if playlist.get("id") in created:
+        return True
     description = playlist.get("description") or ""
-    return any(text in description for text in DESCRIPTIONS)
+    return any(name in description for name in APP_NAMES)
 
 
 def app_playlists(sp):
     """הפלייליסטים של המשתמש שנוצרו בפלייליסטור. לפי הבעלות והתיאור שהאפליקציה כותבת."""
     uid = user_id(sp)
+    created = library.created_playlists(uid)
     found, offset = [], 0
     while True:
         block = sp.current_user_playlists(limit=50, offset=offset)
         found += [
             p for p in block["items"]
-            if p and p["owner"]["id"] == uid and made_here(p)
+            if p and (p.get("owner") or {}).get("id") == uid and made_here(p, created)
         ]
         if not block.get("next"):
             return found
@@ -70,7 +73,8 @@ def owned_playlist(sp, playlist_id):
     if not favourites.is_spotify_id(playlist_id):
         return None
     playlist = sp.playlist(playlist_id, fields="id,name,description,owner.id,items.total,tracks.total")
-    if playlist["owner"]["id"] != user_id(sp) or not made_here(playlist):
+    uid = user_id(sp)
+    if (playlist.get("owner") or {}).get("id") != uid or not made_here(playlist, library.created_playlists(uid)):
         return None
     return playlist
 

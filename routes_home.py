@@ -273,6 +273,7 @@ def delete_data():
     if uid:
         library.clear_cache(uid)
         routes_build.forget_previews(uid)
+        library.forget_created(uid)
     session.clear()
     return redirect("/")
 

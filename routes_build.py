@@ -302,8 +302,11 @@ def save():
     if not uris:
         return page(_('<p>לא נבחרו שירים. <a href="/build">חזרה ליצירת פלייליסט</a>.</p>'))
     title = request.form.get("title", "").strip()[:100] or _("פלייליסטור - מיקס")
-    url = create_playlist(sp, title, uris, _(PLAYLIST_DESCRIPTION))
-    library.forget(user_id(sp), "app_playlists")
+    playlist_id, url = create_playlist(sp, title, uris, _(PLAYLIST_DESCRIPTION))
+    uid = user_id(sp)
+    # זוכרים שהפלייליסט נוצר כאן, גם אם ספוטיפיי לא יחזיר את התיאור שלו
+    library.remember_created(uid, playlist_id)
+    library.forget(uid, "app_playlists")
     theme = request.form.get("theme")
     return page(
         _("<div class=\"success\"><h1>הפלייליסט נשמר! 🎉</h1><p>{a0}, {a1} שירים.</p><a class=\"btn\" href=\"{a2}\" target=\"_blank\" rel=\"noopener\">פתיחה בספוטיפיי</a></div><p><a href=\"/build\">ליצירת פלייליסט נוסף</a></p>", a0=escape(title), a1=len(uris), a2=escape(url)),

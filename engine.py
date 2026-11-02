@@ -450,8 +450,9 @@ PLAYLIST_DESCRIPTION = "נוצר ב-פלייליסטור"
 
 
 def create_playlist(sp, name, uris, description=PLAYLIST_DESCRIPTION):
+    """יוצר פלייליסט פרטי עם השירים. מחזיר (id, קישור בספוטיפיי)."""
     playlist = sp.current_user_playlist_create(name=name, public=False, description=description)
     # ספוטיפיי מקבל עד 100 שירים בכל בקשת הוספה
     for start in range(0, len(uris), 100):
         sp.playlist_add_items(playlist["id"], uris[start:start + 100])
-    return playlist["external_urls"]["spotify"]
+    return playlist["id"], playlist["external_urls"]["spotify"]
