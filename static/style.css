@@ -278,9 +278,10 @@ table.numbered tbody td:first-child::before {
   .bg-motion { display: none; }
 }
 #pl-edit li.saving { opacity: .55; }
-/* עריכת פלייליסט במסך צר: השם והאמן מקבלים שורה שלמה, והכפתורים יורדים לשורה מתחת */
-@media (max-width: 520px) {
-  #pl-edit li { flex-wrap: wrap; }
-  #pl-edit li .info { flex: 1 1 calc(100% - 90px); min-width: 0; }
-  #pl-edit li > .play { margin-inline-start: 74px; }
+/* עריכת פלייליסט: בכל שורה השם והאמן למעלה (עד שתי שורות, בלי לחתוך), והכפתורים בשורה מתחת, כך שכל הכרטיסים נראים אותו דבר */
+#pl-edit li { flex-wrap: wrap; align-content: space-between; row-gap: 10px; }
+#pl-edit li .info { flex: 1 1 calc(100% - 90px); min-width: 0; }
+#pl-edit li .title, #pl-edit li .sub {
+  white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+#pl-edit li > .play { margin-inline-start: 74px; }
