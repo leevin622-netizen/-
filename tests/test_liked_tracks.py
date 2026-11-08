@@ -32,17 +32,18 @@ def test_count_limits_results():
 
 
 def test_vibe_filter_drops_unfitting_and_fills_up_when_too_few(monkeypatch):
-    calm, loud = make_track(1), make_track(2)
+    calm, near, loud, unknown = make_track(1), make_track(2), make_track(3), make_track(4)
     mood = next(iter(engine.GENRE_HINTS))
     profile = {"energy": (None, 0.4)}
     monkeypatch.setattr(engine, "profile_for", lambda mood, event, ranges=None: profile)
-    monkeypatch.setattr(engine, "get_features", lambda ids: {calm["id"]: {"energy": 0.2}, loud["id"]: {"energy": 0.9}})
+    monkeypatch.setattr(engine, "get_features", lambda ids: {
+        calm["id"]: {"energy": 0.2}, near["id"]: {"energy": 0.42}, loud["id"]: {"energy": 0.9}})
     scored = [(1.0, calm), (1.0, loud)]
     assert [t for _, t in engine.filter_liked_by_vibe(scored, mood, "", None)] == [calm]
-    # מבקשים יותר משיש שמתאים: משלימים מהשאר במקום להחזיר פחות
-    found = engine.find_liked_tracks(saved(calm, loud), {}, "", mood, "", "ביחד", 2)
-    assert uris(found) == {calm["uri"], loud["uri"]}
-    found = engine.find_liked_tracks(saved(calm, loud), {}, "", mood, "", "ביחד", 1)
+    # מבקשים יותר משיש שמתאים: משלימים רק משיר שקרוב מאוד לטווח. שיר הפוך או בלי נתונים לא נכנס, גם אם הרשימה קצרה
+    found = engine.find_liked_tracks(saved(calm, near, loud, unknown), {}, "", mood, "", "ביחד", 4)
+    assert uris(found) == {calm["uri"], near["uri"]}
+    found = engine.find_liked_tracks(saved(calm, near, loud, unknown), {}, "", mood, "", "ביחד", 1)
     assert uris(found) == {calm["uri"]}
 
 

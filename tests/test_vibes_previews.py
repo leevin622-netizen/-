@@ -16,13 +16,13 @@ def test_every_form_choice_has_vibe_and_theme():
 
 def test_profile_conflict_event_sets_energy_mood_keeps_valence():
     profile = vibes.profile_for("עצוב", "חדר כושר")
-    assert profile["valence"] == (None, 0.4)
+    assert profile["valence"] == (None, 0.35)
     assert profile["energy"] == (0.68, None)
 
 
 def test_profile_ranges_combine_and_manual_ranges_win():
     profile = vibes.profile_for("שמח", "בישול")
-    assert profile["energy"] == (0.45, 0.8) and profile["valence"] == (0.55, None)
+    assert profile["energy"] == (0.5, 0.8) and profile["valence"] == (0.6, None)
     assert vibes.profile_for("שמח", "", {"energy": (0.1, 0.2)})["energy"] == (0.1, 0.2)
     assert vibes.profile_for("", "") == {}
 
@@ -31,7 +31,8 @@ def test_distance_and_strength():
     profile = {"energy": (0.6, None), "valence": (None, 0.4)}
     assert vibes.distance({"energy": 0.7, "valence": 0.3}, profile) == 0
     assert round(vibes.distance({"energy": 0.5, "valence": 0.5}, profile), 2) == 0.2
-    assert vibes.distance({"energy": None}, profile) == 0
+    # תכונה שחסרה לא מוכיחה שהשיר מתאים: היא נספרת כחריגה מלאה
+    assert vibes.distance({"energy": None}, profile) == 2
     assert vibes.strength({"energy": 0.9, "valence": 0.1}, profile) > vibes.strength({"energy": 0.7, "valence": 0.3}, profile)
 
 

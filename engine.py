@@ -302,10 +302,17 @@ def separate_artists(results):
     return ordered
 
 
-def filter_by_vibe(pools, mood, event, wanted, ranges=None):
+# כמה שיר יכול לחרוג מהטווחים ולהיכנס רק כדי להשלים (סכום החריגות בכל התכונות, בסקלה של 0 עד 1)
+NEAR_VIBE = 0.03
+# כמה שירים משאר האינדקס נבדקים להשלמה (כל אחד שלא במטמון הוא בקשה ל-ReccoBeats, 40 בכל בקשה)
+OTHER_TERMS_POOL = 300
+
+
+def filter_by_vibe(pools, mood, event, wanted, ranges=None, tolerance=0.0):
     """
     משאיר רק שירים שמתאימים לאווירה (קצב, אנרגיה, שמחה) לפי ReccoBeats.
-    שירים שלא עומדים בטווח נזרקים, והמובהקים ביותר נשארים בראש כל מאגר.
+    שירים שלא עומדים בטווח נזרקים, והמובהקים ביותר נשארים בראש כל מאגר. עם tolerance נשארים גם
+    שירים שחורגים מעט, אחרי המדויקים ולפי הקרבה לטווח. שיר בלי נתוני אווירה לא נכנס אף פעם.
     אם השירות לא עונה בכלל, מחזירים את המאגרים כמו שהם.
     """
     profile = profile_for(mood, event, ranges)
@@ -317,10 +324,12 @@ def filter_by_vibe(pools, mood, event, wanted, ranges=None):
         return pools
     filtered = []
     for pool in pools:
-        fitting = [t for t in pool if t.get("id") in features and distance(features[t["id"]], profile) == 0]
-        fitting.sort(key=lambda t: strength(features[t["id"]], profile), reverse=True)
+        scored = [(distance(features[t["id"]], profile), t) for t in pool if t.get("id") in features]
+        fitting = [(d, t) for d, t in scored if d <= tolerance]
+        # מדויקים (מרחק 0) קודם, המובהקים ביותר ראשונים. אחריהם הקרובים ביותר לטווח
+        fitting.sort(key=lambda pair: (pair[0] > 0, pair[0] if pair[0] > 0 else -strength(features[pair[1]["id"]], profile)))
         # מספיק מועמדים לכל מקום, כדי ש-pick יוכל לבחור ויגוון
-        filtered.append(fitting[:max(wanted * 2, PAGE_SIZE)])
+        filtered.append([t for _d, t in fitting[:max(wanted * 2, PAGE_SIZE)]])
     return filtered
 
 
@@ -349,7 +358,17 @@ def find_tracks(sp, genre, mood, event, language, count, personal=False, ranges=
         raw = list(pool.map(lambda term: collect_for_term(sp, term, language, per_term, years), terms))
     # filter_by_vibe מחזיר רשימות חדשות, כך שהשירים שלא עברו את הסינון נשארים ב-raw להשלמה
     results += pick(filter_by_vibe([list(p) for p in raw], mood, event, wanted, ranges), wanted, seen)
-    results += top_up(sp, raw, terms, language, years, count - len(results), seen)
+    vibe = (mood, event, ranges)
+    if profile_for(*vibe):
+        # חסרים שירים: קודם הקרובים ביותר לאווירה. שיר שלא מתאים בכלל לא נכנס, גם אם הרשימה תהיה קצרה יותר
+        results += pick(
+            filter_by_vibe([list(p) for p in raw], mood, event, wanted, ranges, NEAR_VIBE), count - len(results), seen
+        )
+    if profile_for(*vibe) and not genre and len(results) < count:
+        # בלי ז'אנר מסוים, אווירה היא מה שקובע: משלימים משירים של מונחים אחרים באינדקס שמתאימים לה
+        others = [t for t in index_store.load_others(set(terms)) if accepted(t, language, years)][:OTHER_TERMS_POOL]
+        results += pick(filter_by_vibe([others], mood, event, wanted, ranges, NEAR_VIBE), count - len(results), seen)
+    results += top_up(sp, raw, terms, language, years, count - len(results), seen, vibe)
     random.shuffle(results)
     return separate_artists(results)
 
@@ -358,14 +377,16 @@ def find_tracks(sp, genre, mood, event, language, count, personal=False, ranges=
 TOP_UP_ROUNDS = 2
 
 
-def top_up(sp, raw, terms, language, years, missing, seen):
+def top_up(sp, raw, terms, language, years, missing, seen, vibe=None):
     """
     משלים שירים כשנמצאו פחות ממה שביקשת. קודם שירים מאותם מונחים שלא התאימו בדיוק לאווירה,
     אחר כך חיפוש ישיר בספוטיפיי (בלי האינדקס המקומי, שבו לפעמים יש מעט שירים למונח),
     ובסוף מונח כללי לפי השפה. הז'אנר, השפה והשנים תמיד נשמרים.
     """
     found = []
-    if missing > 0:
+    has_vibe = bool(vibe and profile_for(*vibe))
+    # בלי אווירה (ז'אנר בלבד) מושלמים שירים מאותם מונחים. עם אווירה זה כבר נעשה לפי הקרבה לטווח
+    if missing > 0 and not has_vibe:
         found += pick(raw, missing, seen)
     broad = ["israeli"] if language == "עברית" else ["pop"]
     for _ in range(TOP_UP_ROUNDS):
@@ -383,6 +404,8 @@ def top_up(sp, raw, terms, language, years, missing, seen):
                 return []
         with ThreadPoolExecutor(max_workers=TERM_WORKERS) as pool:
             pools = list(pool.map(search, search_terms))
+        if has_vibe:
+            pools = filter_by_vibe(pools, *vibe[:2], need, vibe[2], NEAR_VIBE)
         added = pick(pools, need, seen)
         if not added:
             break
@@ -436,9 +459,17 @@ def find_liked_tracks(saved, artist_tags, genre, mood, event, language, count, r
     fitting = filter_liked_by_vibe(scored, mood, event, ranges)
     fitting.sort(key=lambda pair: pair[0], reverse=True)
     if len(fitting) < count:
-        # לא מספיק שירים שמתאימים בדיוק לאווירה: משלימים מהשאר שמתאימים לז'אנר, לשפה ולשנים
+        # לא מספיק שירים שמתאימים בדיוק לאווירה: משלימים מהשאר שמתאימים לז'אנר, לשפה ולשנים.
+        # עם אווירה, רק שירים קרובים לטווח. בלי נתוני אווירה לא משלימים בשיר שאולי הפוך
         chosen = {track["uri"] for _, track in fitting}
         rest = sorted((pair for pair in scored if pair[1]["uri"] not in chosen), key=lambda pair: pair[0], reverse=True)
+        profile = profile_for(mood, event, ranges)
+        if profile:
+            features = get_features([t["id"] for _, t in rest if t.get("id")])
+            if features:
+                rest = [pair for pair in rest if features.get(pair[1].get("id"))
+                        and distance(features[pair[1]["id"]], profile) <= NEAR_VIBE]
+                rest.sort(key=lambda pair: distance(features[pair[1]["id"]], profile))
         fitting += rest
     results = [to_result(track) for _, track in fitting[:count]]
     random.shuffle(results)

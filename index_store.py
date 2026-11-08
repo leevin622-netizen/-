@@ -5,6 +5,7 @@
 """
 import json
 import os
+import random
 import sqlite3
 import time
 
@@ -69,6 +70,21 @@ def load_term(term):
     if not rows or time.time() - rows[0][1] > MAX_AGE_SECONDS:
         return []
     return [json.loads(raw) for raw, _ in rows]
+
+
+def load_others(exclude):
+    """שירים מכל שאר המונחים באינדקס (בלי הכפילויות), בסדר אקראי. לאווירה שאין לה מספיק שירים במונחים שלה."""
+    db = _connect()
+    rows = db.execute("SELECT term, track_id, raw, built_at FROM tracks").fetchall()
+    db.close()
+    now = time.time()
+    found = {}
+    for term, track_id, raw, built_at in rows:
+        if term not in exclude and now - built_at <= MAX_AGE_SECONDS and track_id not in found:
+            found[track_id] = raw
+    tracks = [json.loads(raw) for raw in found.values()]
+    random.shuffle(tracks)
+    return tracks
 
 
 def stats():

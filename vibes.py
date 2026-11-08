@@ -19,15 +19,17 @@ NAMES = ("energy", "danceability", "valence", "acousticness", "instrumentalness"
 
 # טווחים לכל בחירה: {תכונה: (מינימום, מקסימום)}. None אומר בלי גבול.
 # energy: עוצמה וקצב, danceability: כמה השיר רקיד, valence: כמה הוא שמח (0 עצוב, 1 שמח)
+# הטווחים נקבעו מול 3,000 שירים אמיתיים (tools/simulate_moods.py): שיר "עצוב" הוא שיר עם valence נמוך,
+# ולא רק שקט. אותה תכונה מונעת שיר שמח ברשימה עצובה, וההפך
 MOOD_PROFILES = {
-    "שמח": {"valence": (0.55, None), "energy": (0.45, None)},
-    "עצוב": {"valence": (None, 0.4), "energy": (None, 0.6)},
-    "אנרגטי": {"energy": (0.7, None), "danceability": (0.5, None)},
-    "רגוע": {"energy": (None, 0.5), "speechiness": (None, 0.2)},
-    "רומנטי": {"energy": (None, 0.65), "speechiness": (None, 0.15)},
+    "שמח": {"valence": (0.6, None), "energy": (0.5, None)},
+    "עצוב": {"valence": (None, 0.35), "energy": (None, 0.6)},
+    "אנרגטי": {"energy": (0.75, None), "danceability": (0.5, None)},
+    "רגוע": {"energy": (None, 0.45), "speechiness": (None, 0.2)},
+    "רומנטי": {"energy": (None, 0.65), "valence": (0.2, 0.8), "speechiness": (None, 0.15)},
     "נוסטלגי": {},
-    "מוטיבציה": {"energy": (0.65, None)},
-    "שבור לב": {"valence": (None, 0.4)},
+    "מוטיבציה": {"energy": (0.65, None), "valence": (0.35, None)},
+    "שבור לב": {"valence": (None, 0.35), "energy": (None, 0.7)},
     "בא לרקוד": {"energy": (0.65, None), "danceability": (0.65, None)},
     "חולמני": {"energy": (None, 0.55), "speechiness": (None, 0.15)},
 }
@@ -83,6 +85,8 @@ def distance(features, profile):
     for name, (low, high) in profile.items():
         value = features.get(name)
         if value is None:
+            # תכונה שחסרה לא מוכיחה שהשיר מתאים
+            total += 1
             continue
         if low is not None and value < low:
             total += low - value
