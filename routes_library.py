@@ -158,9 +158,13 @@ def my_artists():
 def bar_chart(rows):
     """שורות (שם, כמות) כגרף עמודות אופקיות. העמודה הארוכה ביותר היא 100%."""
     top = max((count for _label, count in rows), default=1) or 1
-    # השורה הראשונה היא הפופולרית ביותר: היא מודגשת ומונפשת (ראו .bar-row.top)
+    # מודגשת ומונפשת השורה עם הכי הרבה (ראו .bar-row.top), ולא הראשונה: עשורים, למשל, מסודרים לפי זמן.
+    # אם כל השורות שוות אין מובילה, ובשוויון בין כמה שורות כולן מודגשות
+    leaders = {i for i, (_label, count) in enumerate(rows) if count == top}
+    if len(rows) > 1 and len(leaders) == len(rows):
+        leaders = set()
     return '<div class="bars">' + "".join(
-        f'<div class="bar-row{" top" if i == 0 else ""}"><span>{escape(label)}</span>'
+        f'<div class="bar-row{" top" if i in leaders else ""}"><span>{escape(label)}</span>'
         f'<span class="track"><span class="fill" style="width:{count * 100 // top}%"></span></span>'
         f'<span class="num">{count}</span></div>'
         for i, (label, count) in enumerate(rows)

@@ -24,11 +24,20 @@ def test_confetti_respects_reduced_motion():
     assert "prefers-reduced-motion: reduce" in FUN_JS
 
 
-def test_bar_chart_marks_only_the_first_row_as_top():
+def test_bar_chart_marks_the_row_with_the_most_not_the_first():
     from routes_library import bar_chart
-    html = bar_chart([("pop", 9), ("rock", 5), ("jazz", 1)])
+    # עשורים מסודרים לפי זמן: ה-70 הוא הראשון אבל 2010 הוא המוביל
+    html = bar_chart([("70s", 4), ("90s", 6), ("2010s", 12), ("2020s", 3)])
     assert html.count("bar-row top") == 1
-    assert html.index("bar-row top") < html.index("pop") < html.index("rock")
+    assert html.index("bar-row top") < html.index("2010s") < html.index("2020s")
+    assert html.index("70s") < html.index("bar-row top")
+
+
+def test_bar_chart_ties_and_equal_rows():
+    from routes_library import bar_chart
+    assert bar_chart([("a", 5), ("b", 5), ("c", 2)]).count("bar-row top") == 2
+    assert bar_chart([("a", 3), ("b", 3)]).count("bar-row top") == 0
+    assert bar_chart([("a", 3)]).count("bar-row top") == 1
 
 
 def test_saved_tracks_script_marks_top_three_ranks():
