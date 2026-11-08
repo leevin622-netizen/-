@@ -45,7 +45,7 @@ def test_slightly_outside_range_may_fill_up_but_never_the_opposite(monkeypatch):
     sp, features = library(monkeypatch, sad=10, near=0, happy=80)
     assert all(f != HAPPY for f in mood_of(sp, engine.find_tracks(sp, "", "שבור לב", "", "אנגלית", 50), features))
     sp, features = library(monkeypatch, sad=10, near=0, happy=80)
-    assert len(engine.find_tracks(sp, "", "שמח", "", "אנגלית", 30)) == 30
+    assert len(engine.find_tracks(sp, "", "שמח", "", "אנגלית", 8)) == 8
 
 
 def test_event_conflict_keeps_the_mood_valence(monkeypatch):
@@ -105,3 +105,10 @@ def test_short_list_is_filled_from_the_mood_pool_terms(monkeypatch):
     assert len(results) == 20
     wanted = {t["uri"] for t in sad_tracks}
     assert {r["uri"] for r in results} <= wanted
+
+
+def test_pool_terms_are_built_smaller_to_save_spotify_requests():
+    import build_index
+    assert build_index.tracks_for("sad songs") == build_index.POOL_TRACKS_PER_TERM
+    assert build_index.tracks_for("israeli jazz") == build_index.POOL_TRACKS_PER_TERM
+    assert build_index.tracks_for("sad") == build_index.TRACKS_PER_TERM

@@ -34,8 +34,9 @@ MAX_WAIT_SECONDS = 600
 # הפסקה אחרי כל בקשה: בקשה אחת בשנייה לכל היותר
 PAUSE_SECONDS = 1.0
 # לא יותר מזה בקשות בהרצה אחת (כלומר בשעה). המכסה של ספוטיפיי משותפת לכל האפליקציה,
-# ולכן העדכון ברקע לוקח ממנה מעט, והשאר נשאר למשתמשים באתר. 400 בשעה כבר הביאו לחסימה של יום
-REQUESTS_PER_RUN = 100
+# ולכן העדכון ברקע לוקח ממנה מעט, והשאר נשאר למשתמשים באתר. 400 בשעה כבר הביאו לחסימה של יום,
+# וגם 100 בשעה, שלוש שעות ברצף כשנוספו מונחים חדשים (8 בנובמבר), הביאו לחסימה של 24 שעות
+REQUESTS_PER_RUN = 40
 # כשמישהו השתמש באתר בדקות האחרונות, העדכון ברקע לא שולח בקשות, וממתין שהאתר יתפנה
 USER_QUIET_SECONDS = 10 * 60
 # אחרי עצירה (חלוקה לשעות, או חסימה) ממשיכים כעבור שעה, או כשהחסימה נגמרת
@@ -198,7 +199,7 @@ def refresh_index(sp, log):
     log(f"אינדקס השירים: {len(stale)} מונחים לעדכון")
     gentle = _GentleClient(sp)
     for number, term in enumerate(stale, 1):
-        tracks = engine.search_term(gentle, term, "ביחד", build_index.TRACKS_PER_TERM)
+        tracks = engine.search_term(gentle, term, "ביחד", build_index.tracks_for(term))
         # מאפייני הקצב (ReccoBeats, לא ספוטיפיי), כדי שהסינון לפי אווירה יהיה מהיר
         get_features([t["id"] for t in tracks if t.get("id")])
         index_store.save_term(term, tracks)

@@ -22,6 +22,14 @@ from vibes import get_features
 
 # עד 100 שירים לכל מונח: מספיק לבחירה, בלי לשלוח אלפי בקשות לספוטיפיי
 TRACKS_PER_TERM = 100
+# מונחי ההשלמה (engine.MOOD_POOL_TERMS) הם רק תוספת, ולכן קטנים יותר: פחות בקשות לספוטיפיי לכל מונח
+POOL_TRACKS_PER_TERM = 60
+
+
+def tracks_for(term):
+    """כמה שירים לבנות באינדקס למונח."""
+    pool = {t for terms in engine.MOOD_POOL_TERMS.values() for t in terms} | set(engine.HEBREW_POOL_TERMS)
+    return POOL_TRACKS_PER_TERM if term in pool else TRACKS_PER_TERM
 PAUSE_SECONDS = 1
 RETRIES = 5
 # המתנה ארוכה מזו לא שווה לחכות לה בסקריפט. עוצרים, ואפשר להמשיך אחר כך
@@ -46,7 +54,7 @@ def search_with_retry(sp, term):
     """ספוטיפיי מגביל בקשות. מחכים קצת ומנסים שוב. אם ההמתנה ארוכה, עוצרים מיד."""
     for attempt in range(1, RETRIES + 1):
         try:
-            return engine.search_term(sp, term, "ביחד", TRACKS_PER_TERM)
+            return engine.search_term(sp, term, "ביחד", tracks_for(term))
         except SpotifyException as error:
             if error.http_status != 429:
                 raise
