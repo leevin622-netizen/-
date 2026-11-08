@@ -17,7 +17,7 @@ def test_page_sends_only_first_cards(logged_in):
     client, _sp, _csrf = logged_in
     fill()
     html = client.get("/existing-playlists").get_data(as_text=True)
-    assert html.count('class="pl-card"') == routes_catalog.CATALOG_PAGE
+    assert html.count('class="pl-card') == routes_catalog.CATALOG_PAGE
     assert 'data-total="200"' in html and 'data-shown="60"' in html
 
 
@@ -54,7 +54,7 @@ def test_pages_are_compressed(logged_in):
     assert packed.headers["Content-Encoding"] == "gzip"
     assert "Accept-Encoding" in packed.headers["Vary"]
     assert len(packed.data) < len(plain.data) / 3
-    assert gzip.decompress(packed.data).count(b'class="pl-card"') == 60
+    assert gzip.decompress(packed.data).count(b'class="pl-card') == 60
 
 
 def test_small_responses_not_compressed(logged_in):

@@ -63,34 +63,38 @@ def pick_form(action, item_id, q, label):
     )
 
 
-def artist_rows(artists, followed, q):
+# ההמלצה הראשונה היא ההתאמה הטובה ביותר: מודגשת ומונפשת (🔥)
+TOP_ATTR = ' class="hot hot-rec"'
+
+
+def artist_rows(artists, followed, q, top=False):
     if not artists:
         return _('<p class="note">אין תוצאות להצגה.</p>')
     rows = []
-    for artist in artists:
+    for i, artist in enumerate(artists):
         if artist["id"] in followed:
             action = _('<span class="note">✓ עוקב</span>')
         else:
             action = pick_form("/favourites/artist", artist["id"], q, _("➕ עקוב"))
         rows.append(
-            f"<li>{cover(artist['image'])}"
+            f'<li{TOP_ATTR if top and i == 0 else ""}>{cover(artist["image"])}'
             f'<div class="info"><div class="title">{spotify_link(artist["name"], "artist", artist["id"])}</div></div>'
             f"{action}</li>"
         )
     return f'<ul class="list">{"".join(rows)}</ul>'
 
 
-def track_rows(tracks, saved, q):
+def track_rows(tracks, saved, q, top=False):
     if not tracks:
         return _('<p class="note">אין תוצאות להצגה.</p>')
     rows = []
-    for track in tracks:
+    for i, track in enumerate(tracks):
         if saved.get(track["id"]):
             action = _('<span class="note">✓ שמור</span>')
         else:
             action = pick_form("/favourites/track", track["id"], q, _("❤ שמור"))
         rows.append(
-            f"<li>{cover(track['image'])}"
+            f'<li{TOP_ATTR if top and i == 0 else ""}>{cover(track["image"])}'
             f'<div class="info"><div class="title">{spotify_link(track["name"], "track", track["id"])}</div>'
             f'<div class="sub">{artist_links(track)}</div></div>{action}</li>'
         )
@@ -140,9 +144,9 @@ def favourites_page():
             note = _("אמנים דומים למה שאתם כבר אוהבים, ושירים מהם.")
         body += (
             f'<h2>{heading}</h2><p class="note">{note}</p>'
-            + artist_rows(artists, followed, "")
+            + artist_rows(artists, followed, "", top=True)
             + _("<h2>שירים שאולי תאהבו</h2>")
-            + track_rows(tracks, saved, "")
+            + track_rows(tracks, saved, "", top=True)
         )
     return page(body + _('<p><a href="/">חזרה לדף הבית</a></p>'), title=_("אמנים ושירים שאתם אוהבים"))
 

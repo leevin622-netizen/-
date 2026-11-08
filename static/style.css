@@ -335,9 +335,9 @@ main > h1::after, .success h1::after { content: " 🎶"; display: inline-block; 
 }
 .bar-row.top .num { color: var(--text); font-size: 17px; animation: pulse 1.4s ease-in-out infinite; }
 tr.hot td { background-image: linear-gradient(100deg, transparent 30%, var(--hot) 50%, transparent 70%); background-size: 250% 100%; }
-tr.hot1 { --hot: rgba(255, 213, 74, .38); }
-tr.hot2 { --hot: rgba(214, 222, 235, .30); }
-tr.hot3 { --hot: rgba(214, 140, 80, .32); }
+.hot1 { --hot: rgba(255, 213, 74, .38); }
+.hot2 { --hot: rgba(214, 222, 235, .30); }
+.hot3 { --hot: rgba(214, 140, 80, .32); }
 tr.hot td { animation: shimmer 3s linear infinite; font-weight: 600; }
 tr.hot1 td { animation-duration: 2.2s; }
 tr.hot td.name:not(.muted)::before { display: inline-block; margin-inline-end: 6px; animation: crown 1.8s ease-in-out infinite; }
@@ -352,3 +352,17 @@ tr.hot3 td.name:not(.muted)::before { content: "🥉"; animation-delay: .6s; }
   .bar-row .fill, .bar-row.top .fill, .bar-row.top > span:first-child::before, .bar-row.top .num,
   tr.hot td, tr.hot td.name:not(.muted)::before { animation: none; }
 }
+
+/* הכי פופולרי ברשימות כרטיסים: שלושת הפלייליסטים הגדולים, הפלייליסט הגדול שלי, וההמלצה המובילה */
+.hot-rec { --hot: rgba(255, 130, 60, .38); }
+.list li.hot {
+  background-image: linear-gradient(100deg, transparent 30%, var(--hot) 50%, transparent 70%); background-size: 250% 100%;
+  animation: shimmer 2.6s linear infinite; outline: 1px solid var(--hot); box-shadow: 0 0 18px var(--hot);
+}
+.list li.hot .title::before { display: inline-block; margin-inline-end: 6px; animation: crown 1.8s ease-in-out infinite; }
+.list li.hot1 .title::before { content: "🥇"; }
+.list li.hot2 .title::before { content: "🥈"; animation-delay: .3s; }
+.list li.hot3 .title::before { content: "🥉"; animation-delay: .6s; }
+.list li.hot-rec .title::before { content: "🔥"; }
+.pl-card.hot .rank { font-weight: 700; color: var(--text); animation: pulse 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .list li.hot, .list li.hot .title::before, .pl-card.hot .rank { animation: none; } }

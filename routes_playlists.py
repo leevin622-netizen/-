@@ -121,6 +121,11 @@ def parse_position(value, total):
     return position if 0 <= position < total else None
 
 
+def row_class(row, hot):
+    """מסמן שורה כמובילה (מודגשת ומונפשת). הטקסט עצמו נשאר כמו שהוא, כדי שהתרגום ימשיך להתאים."""
+    return row.replace("<li>", '<li class="hot hot1">', 1) if hot else row
+
+
 @app.route("/my-playlists")
 def my_playlists():
     sp = web.get_spotify_client()
@@ -130,8 +135,10 @@ def my_playlists():
     if not playlists:
         body = _('<p class="note">עדיין לא שמרתם פלייליסטים דרך פלייליסטור.</p>')
     else:
+        # הפלייליסט עם הכי הרבה שירים מודגש ומונפש (כשיש יותר מאחד)
+        biggest = max(playlists, key=playlist_size)["id"] if len(playlists) > 1 else None
         rows = "".join(
-            _("<li>{a0}<div class=\"info\"><div class=\"title\"><a class=\"sp\" href=\"/playlist/{a1}\">{a2}</a></div><div class=\"sub\">{a3} שירים</div></div></li>", a0=cover(image_url(p.get('images'))), a1=escape(p["id"]), a2=escape(p["name"]), a3=playlist_size(p))
+            row_class(_("<li>{a0}<div class=\"info\"><div class=\"title\"><a class=\"sp\" href=\"/playlist/{a1}\">{a2}</a></div><div class=\"sub\">{a3} שירים</div></div></li>", a0=cover(image_url(p.get('images'))), a1=escape(p["id"]), a2=escape(p["name"]), a3=playlist_size(p)), p["id"] == biggest)
             for p in playlists
         )
         body = f'<ul class="list">{rows}</ul>'

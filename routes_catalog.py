@@ -47,7 +47,7 @@ def catalog_card(rank, item):
     # פלייליסט שעוד לא נמשך לו מספר עוקבים מוצג בלי השורה הזו
     followers = _("{a0} עוקבים", a0=catalog.short_number(item["followers"])) if item["followers"] is not None else None
     return (
-        f'<li class="pl-card"><span class="rank">{rank}</span>{cover(item["image"])}<div class="info">'
+        f'<li class="pl-card{f" hot hot{rank}" if rank <= 3 else ""}"><span class="rank">{rank}</span>{cover(item["image"])}<div class="info">'
         f'<div class="title"><a class="sp" href="https://open.spotify.com/playlist/{pid}" target="_blank" rel="noopener">{escape(item["name"])}</a></div>'
         f'<div class="sub">{escape(item["owner"] or "")}</div>{f'<div class="sub">👥 {followers}</div>' if followers else ""}</div>'
         + _('<button type="button" class="btn secondary add" data-id="{a0}">➕ לספרייה</button></li>', a0=pid)
