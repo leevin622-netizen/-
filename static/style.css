@@ -320,3 +320,35 @@ main > h1::after, .success h1::after { content: " 🎶"; display: inline-block; 
   header a.logo, main > h1::after, .success h1::after, .play.playing { animation: none; }
   .btn:hover, .menu a:hover, .pl-card:hover, .play:hover { transform: none; }
 }
+
+/* הכי פופולרי בכל עמוד: מוביל בגרף ובטבלאות מודגש ומונפש (👑 ו-🥇🥈🥉) */
+.bar-row .fill { animation: grow 1.1s cubic-bezier(.2, .8, .2, 1) backwards; }
+.bar-row:nth-child(2) .fill { animation-delay: .08s; }
+.bar-row:nth-child(3) .fill { animation-delay: .16s; }
+.bar-row:nth-child(n+4) .fill { animation-delay: .24s; }
+.bar-row.top { font-weight: 700; }
+.bar-row.top > span:first-child::before { content: "👑 "; display: inline-block; animation: crown 1.8s ease-in-out infinite; }
+.bar-row.top .track { height: 16px; box-shadow: 0 0 14px var(--accent); }
+.bar-row.top .fill {
+  opacity: 1; background: linear-gradient(100deg, var(--accent) 30%, #fff 50%, var(--accent) 70%); background-size: 250% 100%;
+  animation: grow 1.1s cubic-bezier(.2, .8, .2, 1) backwards, shimmer 2.4s linear 1.1s infinite;
+}
+.bar-row.top .num { color: var(--text); font-size: 17px; animation: pulse 1.4s ease-in-out infinite; }
+tr.hot td { background-image: linear-gradient(100deg, transparent 30%, var(--hot) 50%, transparent 70%); background-size: 250% 100%; }
+tr.hot1 { --hot: rgba(255, 213, 74, .38); }
+tr.hot2 { --hot: rgba(214, 222, 235, .30); }
+tr.hot3 { --hot: rgba(214, 140, 80, .32); }
+tr.hot td { animation: shimmer 3s linear infinite; font-weight: 600; }
+tr.hot1 td { animation-duration: 2.2s; }
+tr.hot td.name:not(.muted)::before { display: inline-block; margin-inline-end: 6px; animation: crown 1.8s ease-in-out infinite; }
+tr.hot1 td.name:not(.muted)::before { content: "🥇"; }
+tr.hot2 td.name:not(.muted)::before { content: "🥈"; animation-delay: .3s; }
+tr.hot3 td.name:not(.muted)::before { content: "🥉"; animation-delay: .6s; }
+@keyframes grow { from { width: 0; } }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@keyframes crown { 0%, 100% { transform: translateY(0) rotate(-8deg) scale(1); } 50% { transform: translateY(-3px) rotate(8deg) scale(1.2); } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+@media (prefers-reduced-motion: reduce) {
+  .bar-row .fill, .bar-row.top .fill, .bar-row.top > span:first-child::before, .bar-row.top .num,
+  tr.hot td, tr.hot td.name:not(.muted)::before { animation: none; }
+}

@@ -136,7 +136,9 @@ def my_artists():
             + cell(", ".join(a["genres"][:3]), cls="name muted")
             + cell("✓" if a["followed"] else "", 1 if a["followed"] else 0)
         )
-        rows.append(f"<tr>{row}</tr>")
+        # שלושת האמנים שהכי שומעים מודגשים ומונפשים (מדליה זהב, כסף וארד)
+        hot = f' class="hot hot{a["rank"][0]}"' if a["rank"] and a["rank"][0] <= 3 else ""
+        rows.append(f"<tr{hot}>{row}</tr>")
 
     # בעברית הקופסה האחרונה מוצגת הכי שמאלה
     return page(
@@ -156,11 +158,12 @@ def my_artists():
 def bar_chart(rows):
     """שורות (שם, כמות) כגרף עמודות אופקיות. העמודה הארוכה ביותר היא 100%."""
     top = max((count for _label, count in rows), default=1) or 1
+    # השורה הראשונה היא הפופולרית ביותר: היא מודגשת ומונפשת (ראו .bar-row.top)
     return '<div class="bars">' + "".join(
-        f'<div class="bar-row"><span>{escape(label)}</span>'
+        f'<div class="bar-row{" top" if i == 0 else ""}"><span>{escape(label)}</span>'
         f'<span class="track"><span class="fill" style="width:{count * 100 // top}%"></span></span>'
         f'<span class="num">{count}</span></div>'
-        for label, count in rows
+        for i, (label, count) in enumerate(rows)
     ) + "</div>"
 
 

@@ -523,7 +523,9 @@ SAVED_JS = """
   var rows = data.map(function (t) {
     var uri = t[0], name = t[1], artists = t[2], id = uri.indexOf("spotify:track:") === 0 ? uri.slice(14) : "";
     var first = artists.length ? artists[0][1] : "";
-    return "<tr><td><input type=\\"checkbox\\" name=\\"uri\\" value=\\"" + esc(uri) + "\\" aria-label=\\"" +
+    // שלושת השירים שהכי שומעים מודגשים ומונפשים (מדליה זהב, כסף וארד)
+    var hot = t[8] >= 1 && t[8] <= 3 ? " class=\\"hot hot" + t[8] + "\\"" : "";
+    return "<tr" + hot + "><td><input type=\\"checkbox\\" name=\\"uri\\" value=\\"" + esc(uri) + "\\" aria-label=\\"" +
       esc(T.check.replace("{a0}", name)) + "\\"></td>" +
       "<td><button type=\\"button\\" class=\\"play\\" data-artist=\\"" + esc(first) + "\\" data-title=\\"" + esc(name) +
       "\\" data-id=\\"" + esc(id) + "\\" aria-pressed=\\"false\\" aria-label=\\"" + esc(T.play.replace("{a0}", name)) +
