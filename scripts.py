@@ -67,6 +67,52 @@ SORT_JS = """
 """
 
 
+# קונפטי של אימוג'ים מוזיקליים: בלחיצה על כפתור ראשי או על ▶, ובגשם בדף "הפלייליסט נשמר". לא רץ למי שביקש פחות תנועה
+FUN_JS = """
+(function () {
+  if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  var EMOJIS = ["🎵", "🎶", "🎸", "🎹", "🥁", "🎤", "🎧", "✨", "🎉", "💃", "🕺", "🪩"];
+  function burst(x, y, count) {
+    for (var i = 0; i < count; i++) {
+      var el = document.createElement("span");
+      el.setAttribute("aria-hidden", "true");
+      el.textContent = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+      el.style.cssText = "position:fixed;left:" + x + "px;top:" + y + "px;line-height:1;pointer-events:none;z-index:50;font-size:" + (16 + Math.random() * 18) + "px";
+      document.body.appendChild(el);
+      var angle = Math.random() * Math.PI * 2, dist = 50 + Math.random() * 90;
+      var dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist;
+      var move = function (px, py, scale, turn) {
+        return "translate(calc(-50% + " + px + "px), calc(-50% + " + py + "px)) scale(" + scale + ") rotate(" + turn + "deg)";
+      };
+      var turn = Math.random() * 360 - 180;
+      var anim = el.animate([
+        {transform: move(0, 0, .4, 0), opacity: 1},
+        {transform: move(dx, dy - 40, 1.1, turn), opacity: 1, offset: .55},
+        {transform: move(dx * 1.1, dy + 70, .8, turn * 1.4), opacity: 0}
+      ], {duration: 900 + Math.random() * 600, easing: "ease-out"});
+      anim.onfinish = el.remove.bind(el);
+    }
+  }
+  // בשלב הלכידה, כדי לבדוק את הכפתור לפני שהוא מתחלף ל"מנגן"
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest && event.target.closest(".btn:not(.secondary), .play:not(.none):not(.playing)");
+    if (!button) return;
+    var box = button.getBoundingClientRect();
+    var x = event.detail ? event.clientX : box.left + box.width / 2;
+    var y = event.detail ? event.clientY : box.top + box.height / 2;
+    burst(x, y, 8);
+  }, true);
+  if (document.querySelector(".success")) {
+    for (var i = 0; i < 7; i++) {
+      setTimeout(function () {
+        burst(innerWidth * (.15 + Math.random() * .7), innerHeight * (.2 + Math.random() * .3), 12);
+      }, 150 + i * 220);
+    }
+  }
+})();
+"""
+
+
 # כפתור ▶ לכל שיר, בתצוגה המקדימה ובטבלת השירים שאהבת. הכתובת נטענת מהשרת רק בלחיצה.
 # אם אין קטע ב-Deezer או ב-iTunes, נפתח בתחתית המסך נגן ספוטיפיי של השיר, שעובד לכל שיר
 LAZY_PLAY_JS = """

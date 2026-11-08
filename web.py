@@ -20,6 +20,7 @@ import build_playlists
 import library
 import ratelimit
 import themes
+from scripts import FUN_JS
 from i18n import _, LANGS, lang, text_dir, translate_js
 import taste
 import json
@@ -479,6 +480,7 @@ def page(body, title=None, wide=False, script="", theme=None, images=None):
         + body
         + "</main>"
         + (f"<script>{translate_js(script)}</script>" if script else "")
+        + f"<script>{FUN_JS}</script>"
         + "</body></html>"
     )
 

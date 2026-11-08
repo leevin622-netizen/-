@@ -285,3 +285,38 @@ table.numbered tbody td:first-child::before {
   white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 #pl-edit li > .play { margin-inline-start: 74px; }
+
+/* אווירת מסיבה: אימוג'ים שצפים ברקע, לוגו שפועם, כפתורים שקופצים ושיר שמנגן שמאיר */
+.emoji-layer { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.emoji-float {
+  position: absolute; left: var(--x); bottom: -10vh; font-size: var(--size); line-height: 1; opacity: 0;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, .35)); animation: emoji var(--t) ease-in-out infinite; animation-delay: var(--d);
+}
+@keyframes emoji {
+  0% { transform: translate(0, 0) rotate(-12deg) scale(.8); opacity: 0; }
+  10% { opacity: .85; }
+  30% { transform: translate(var(--sway), -35vh) rotate(10deg) scale(1.05); }
+  60% { transform: translate(calc(var(--sway) * -1), -70vh) rotate(-10deg) scale(.95); }
+  100% { transform: translate(var(--sway), -118vh) rotate(12deg) scale(1.1); opacity: 0; }
+}
+@media (max-width: 600px) { .emoji-float:nth-of-type(n+5) { display: none; } }
+header a.logo { display: inline-block; animation: beat 2.4s ease-in-out infinite; }
+header a.logo:hover { animation: wiggle .5s ease-in-out; }
+main > h1::after, .success h1::after { content: " 🎶"; display: inline-block; animation: wiggle 2.6s ease-in-out infinite; }
+.btn { transition: filter .15s, transform .15s, box-shadow .15s; }
+.btn:hover { transform: translateY(-2px) scale(1.03); box-shadow: 0 8px 22px rgba(0, 0, 0, .35); }
+.btn:active { transform: scale(.96); }
+.menu a, .card, .pl-card { transition: background .15s, border-color .15s, transform .2s; }
+.menu a:hover, .pl-card:hover { transform: translateY(-3px); }
+.play:hover { transform: scale(1.12) rotate(-6deg); }
+.play.playing { animation: glow 1.2s ease-in-out infinite; }
+.list li:has(.play.playing), tr:has(.play.playing) { background: var(--card-hover); outline: 1px solid var(--accent); }
+.success { text-align: center; }
+@keyframes beat { 0%, 100% { transform: scale(1); } 12% { transform: scale(1.07); } 24% { transform: scale(1); } 36% { transform: scale(1.05); } }
+@keyframes wiggle { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-12deg); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-6deg); } 80% { transform: rotate(4deg); } }
+@keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 var(--accent); } 50% { box-shadow: 0 0 0 8px transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  .emoji-layer { display: none; }
+  header a.logo, main > h1::after, .success h1::after, .play.playing { animation: none; }
+  .btn:hover, .menu a:hover, .pl-card:hover, .play:hover { transform: none; }
+}

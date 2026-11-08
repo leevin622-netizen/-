@@ -94,6 +94,18 @@ MOTION = {
 }
 
 
+# אימוג'ים שצפים ברקע, לפי הסגנון
+EMOJIS = {
+    "pop": ["🎤", "✨", "💃", "🎉", "🎶", "🌟"],
+    "mizrahi": ["🪘", "🎶", "💃", "🎺", "🎉", "🌟"],
+    "rock": ["🎸", "🤘", "🔥", "🥁", "⚡", "🎶"],
+    "hiphop": ["🎤", "🎧", "🔥", "💎", "🕺", "🎶"],
+    "electronic": ["🎛️", "🪩", "⚡", "🎧", "✨", "🎶"],
+    "chill": ["🌙", "🎷", "☁️", "🎹", "🌊", "🎶"],
+    "default": ["🎵", "🎧", "🎸", "🎹", "🥁", "🎤", "🎺", "🎷", "✨", "🎉"],
+}
+
+
 def motion_html(theme):
     """
     תנועה נוזלית על המסך: טיפות שנולדות במקומות קבועים ומתפשטות כגלים, וכתמי צבע שזזים לאט.
@@ -140,6 +152,20 @@ def motion_html(theme):
     return f'<div class="bg-motion">{beam}{"".join(blobs)}{"".join(drops)}{"".join(notes)}{eq}</div>'
 
 
+def emoji_html(theme):
+    """אימוג'ים מוזיקליים שעולים ומתנדנדים מעל ההכהיה של הרקע, בשכבה משלהם מתחת לתוכן."""
+    rnd = random.Random()
+    emojis = EMOJIS.get(theme, EMOJIS["default"])
+    floaters = []
+    for i in range(8):
+        style = (
+            f"--x:{rnd.randint(2, 94)}%;--size:{rnd.randint(26, 46)}px;"
+            f"--t:{rnd.uniform(9, 16):.1f}s;--d:-{rnd.uniform(0, 16):.1f}s;--sway:{rnd.randint(14, 40)}px"
+        )
+        floaters.append(f'<span class="emoji-float" style="{style}">{emojis[i % len(emojis)]}</span>')
+    return f'<div class="emoji-layer" aria-hidden="true">{"".join(floaters)}</div>'
+
+
 def background_html(images, theme="default"):
     """
     רקע דינמי: טיפות שנולדות ומתפשטות על המים, וכתמי צבע זזים מאחוריהן, לפי קצב הסגנון.
@@ -148,7 +174,7 @@ def background_html(images, theme="default"):
     motion = motion_html(theme)
     style = f"--color-t:{MOTION.get(theme, MOTION['default'])['colors']}s"
     if not images:
-        return f'<div class="bg" aria-hidden="true" style="{style}">{motion}</div><div class="bg-shade light"></div>'
+        return f'<div class="bg" aria-hidden="true" style="{style}">{motion}</div><div class="bg-shade light"></div>{emoji_html(theme)}'
     rows = []
     for i in range(3):
         # כל שורה מתחילה מתמונה אחרת, וכל שורה מוכפלת כדי שהתנועה תהיה רציפה
@@ -158,7 +184,7 @@ def background_html(images, theme="default"):
         imgs = "".join(f'<img src="{escape(url)}" alt="" loading="lazy">' for url in shifted)
         rows.append(f'<div class="bg-row r{i + 1}"><div class="bg-track">{imgs}{imgs}</div></div>')
     # התנועה מעל התמונות, כדי שהטיפות יאירו את העטיפות
-    return f'<div class="bg" aria-hidden="true" style="{style}">{"".join(rows)}{motion}</div><div class="bg-shade"></div>'
+    return f'<div class="bg" aria-hidden="true" style="{style}">{"".join(rows)}{motion}</div><div class="bg-shade"></div>{emoji_html(theme)}'
 
 
 BACKGROUND_CSS = """
