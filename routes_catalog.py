@@ -12,7 +12,7 @@ import favourites
 import taste
 import json
 import web
-from web import app, cover, csrf_token, page
+from web import app, cover, csrf_token, page, user_id
 from scripts import CATALOG_JS
 
 
@@ -89,8 +89,9 @@ def existing_playlists():
     )
     first = filter_catalog(items, favourite)
     texts = {
-        "count": _("מוצגים {a} מתוך {b}"), "added": _("✓ נוסף"),
+        "count": _("מוצגים {a} מתוך {b}"), "added": _("✓ נוסף · ↩ ביטול"),
         "failed": _("לא הצלחנו להוסיף את הפלייליסט. נסו שוב."),
+        "undo_failed": _("לא הצלחנו לבטל את ההוספה. נסו שוב."),
         "load_failed": _("לא הצלחנו לטעון את הפלייליסטים. נסו שוב."),
     }
     return page(
@@ -135,6 +136,25 @@ def follow_catalog_playlist():
         return {"ok": False}, 400
     try:
         sp.current_user_follow_playlist(playlist_id)
+    except spotipy.SpotifyException:
+        return {"ok": False}, 502
+    return {"ok": True}
+
+
+@app.route("/existing-playlists/unfollow", methods=["POST"])
+def unfollow_catalog_playlist():
+    """ביטול הוספה בטעות. רק פלייליסט מהקטלוג שהוא לא של המשתמש עצמו, כדי שלא יימחק פלייליסט אישי."""
+    sp = web.get_spotify_client()
+    if sp is None:
+        return {"ok": False}, 401
+    playlist_id = request.form.get("id", "")
+    if not favourites.is_spotify_id(playlist_id) or playlist_id not in {item["id"] for item in catalog.load()}:
+        return {"ok": False}, 400
+    try:
+        owner = (sp.playlist(playlist_id, fields="owner.id").get("owner") or {}).get("id")
+        if owner == user_id(sp):
+            return {"ok": False}, 400
+        sp.current_user_unfollow_playlist(playlist_id)
     except spotipy.SpotifyException:
         return {"ok": False}, 502
     return {"ok": True}

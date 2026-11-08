@@ -154,6 +154,9 @@ class FakeSpotify:
     def current_user_follow_playlist(self, playlist_id):
         self.calls.append(("follow", playlist_id))
 
+    def current_user_unfollow_playlist(self, playlist_id):
+        self.calls.append(("unfollow", playlist_id))
+
     def current_user_playlist_create(self, name, public=False, description=""):
         self.calls.append(("create", name))
         return {"id": "newplaylist", "external_urls": {"spotify": "https://open.spotify.com/playlist/new"}}

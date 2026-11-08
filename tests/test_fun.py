@@ -76,3 +76,32 @@ def test_first_recommendation_is_marked_but_search_results_are_not(logged_in):
     html = client.get("/favourites").get_data(as_text=True)
     assert 'class="hot hot-rec"' in html
     assert 'class="hot hot-rec"' not in client.get("/favourites?q=abc").get_data(as_text=True)
+
+
+def test_undo_adding_a_catalog_playlist(logged_in):
+    import catalog
+    client, sp, csrf = logged_in
+    catalog.add_candidates([{"id": "p" * 22, "name": "Top Hits", "owner": "o", "image": ""}], "US", "hits")
+    catalog.select_top()
+    sp.playlist = lambda playlist_id, fields=None, market=None: {"owner": {"id": "someone-else"}}
+    post = lambda pid: client.post("/existing-playlists/unfollow", data={"csrf": csrf, "id": pid})
+    assert post("p" * 22).get_json() == {"ok": True}
+    assert ("unfollow", "p" * 22) in sp.calls
+    # לא מהקטלוג, או מזהה לא תקין: לא מסירים
+    assert post("x" * 22).status_code == 400 and post("bad id").status_code == 400
+    assert ("unfollow", "x" * 22) not in sp.calls
+
+
+def test_undo_never_unfollows_my_own_playlist(logged_in):
+    import catalog
+    client, sp, csrf = logged_in
+    catalog.add_candidates([{"id": "p" * 22, "name": "Mine", "owner": "tester", "image": ""}], "US", "hits")
+    catalog.select_top()
+    # FakeSpotify.playlist מחזיר את tester כבעלים
+    response = client.post("/existing-playlists/unfollow", data={"csrf": csrf, "id": "p" * 22})
+    assert response.status_code == 400 and not any(c[0] == "unfollow" for c in sp.calls)
+
+
+def test_catalog_button_toggles_between_add_and_undo():
+    from scripts import CATALOG_JS
+    assert "/existing-playlists/unfollow" in CATALOG_JS and "dataset.label" in CATALOG_JS

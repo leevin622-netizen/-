@@ -365,19 +365,26 @@ CATALOG_JS = """
   // חיפוש אחרי הפסקה קצרה בהקלדה, ולא על כל אות
   box.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { load(false); }, 250); });
   more.addEventListener('click', function () { load(true); });
+  // אותו כפתור: "לספרייה" מוסיף, ואחרי ההוספה הוא הופך ל"ביטול" שמסיר את הפלייליסט בחזרה (לחיצה בטעות)
   grid.addEventListener('click', function (event) {
     var button = event.target.closest('.add');
     if (!button || button.disabled) return;
+    var undoing = button.dataset.added === '1';
+    if (!undoing) button.dataset.label = button.textContent;
     button.disabled = true;
     var data = new FormData();
     data.append('csrf', grid.dataset.csrf);
     data.append('id', button.dataset.id);
-    fetch('/existing-playlists/follow', {method: 'POST', body: data})
+    function fail() { button.disabled = false; alert(undoing ? T.undo_failed : T.failed); }
+    fetch(undoing ? '/existing-playlists/unfollow' : '/existing-playlists/follow', {method: 'POST', body: data})
       .then(function (r) { return r.json(); })
       .then(function (r) {
-        if (r.ok) { button.textContent = T.added; } else { button.disabled = false; alert(T.failed); }
+        if (!r.ok) return fail();
+        button.disabled = false;
+        button.dataset.added = undoing ? '' : '1';
+        button.textContent = undoing ? button.dataset.label : T.added;
       })
-      .catch(function () { button.disabled = false; alert(T.failed); });
+      .catch(fail);
   });
   show();
 })();

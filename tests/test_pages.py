@@ -35,7 +35,7 @@ def test_every_page_loads(logged_in, path):
     assert response.status_code == 200, response.get_data(as_text=True)[:500]
 
 
-@pytest.mark.parametrize("path", ["/build", "/save", "/lang", "/delete-data", "/existing-playlists/follow"])
+@pytest.mark.parametrize("path", ["/build", "/save", "/lang", "/delete-data", "/existing-playlists/follow", "/existing-playlists/unfollow"])
 def test_post_without_csrf_is_rejected(logged_in, path):
     client, _sp, _csrf = logged_in
     assert client.post(path, data={"csrf": "wrong"}).status_code == 400
