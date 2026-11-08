@@ -80,3 +80,28 @@ def test_every_mood_range_matches_its_meaning():
     assert vibes.distance(happy_song, profiles["עצוב"]) > 0.3 and vibes.distance(happy_song, profiles["שבור לב"]) > 0.2
     assert vibes.distance(sad_song, profiles["שמח"]) > 0.3 and vibes.distance(sad_song, profiles["בא לרקוד"]) > 0
     assert vibes.distance(loud_song, profiles["רגוע"]) > 0.3 and vibes.distance(loud_song, profiles["חולמני"]) > 0.3
+
+
+def test_pool_terms_are_for_filling_not_for_the_regular_search():
+    import build_index
+    terms = engine.build_terms("rock", "עצוב", "", "ביחד")
+    assert not set(engine.MOOD_POOL_TERMS["עצוב"]) & set(terms)
+    assert engine.pool_terms("עצוב", "אנגלית") == engine.MOOD_POOL_TERMS["עצוב"]
+    assert set(engine.HEBREW_POOL_TERMS) <= set(engine.pool_terms("עצוב", "עברית"))
+    assert not set(engine.HEBREW_POOL_TERMS) & set(engine.pool_terms("עצוב", "אנגלית"))
+    assert engine.pool_terms("עצוב", "ביחד", used=["sad songs"]).count("sad songs") == 0
+    # הם נבנים באינדקס ברקע
+    assert set(engine.MOOD_POOL_TERMS["שמח"]) <= set(build_index.all_terms())
+
+
+def test_short_list_is_filled_from_the_mood_pool_terms(monkeypatch):
+    import index_store
+    sp, features = library(monkeypatch, sad=40, happy=40)
+    sad_tracks = [t for t in sp.tracks if features.get(t["id"]) == SAD]
+    index_store.save_term("sad", sad_tracks[:3])
+    index_store.save_term("sad songs", sad_tracks[3:30])
+    sp.tracks = []  # אין חיפוש חי: רק האינדקס
+    results = engine.find_tracks(sp, "rock", "עצוב", "", "אנגלית", 20)
+    assert len(results) == 20
+    wanted = {t["uri"] for t in sad_tracks}
+    assert {r["uri"] for r in results} <= wanted

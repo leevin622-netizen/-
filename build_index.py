@@ -36,6 +36,9 @@ def all_terms():
     for mood_terms in engine.GENRE_HINTS.values():
         terms.update(mood_terms)
     terms.update(term for _, term in engine.HEBREW_GENRES + engine.WORLD_GENRES)
+    for extra in engine.MOOD_POOL_TERMS.values():
+        terms.update(extra)
+    terms.update(engine.HEBREW_POOL_TERMS)
     return sorted(terms)
 
 
