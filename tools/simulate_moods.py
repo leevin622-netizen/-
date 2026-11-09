@@ -42,6 +42,33 @@ OPPOSITE = {
 }
 
 
+# אותו רעיון לאירועים: מה שיר באמת צריך להיות כדי להתאים לאירוע
+EVENT_CORE = {
+    "ריצה": lambda f: f["energy"] >= 0.7 and f["danceability"] >= 0.5,
+    "חדר כושר": lambda f: f["energy"] >= 0.68 and f["danceability"] >= 0.5,
+    "נסיעה באוטו": lambda f: f["energy"] >= 0.5,
+    "עבודה וריכוז": lambda f: f["energy"] <= 0.55,
+    "לימודים": lambda f: f["energy"] <= 0.5,
+    "בישול": lambda f: 0.35 <= f["energy"] <= 0.8 and f["valence"] >= 0.4,
+    "ניקיון הבית": lambda f: f["energy"] >= 0.6 and f["danceability"] >= 0.55,
+    "לפני השינה": lambda f: f["energy"] <= 0.35,
+    "מסיבה": lambda f: f["energy"] >= 0.7 and f["danceability"] >= 0.6,
+    "יום הולדת": lambda f: f["energy"] >= 0.6 and f["danceability"] >= 0.55 and f["valence"] >= 0.5,
+    "חתונה": lambda f: f["energy"] >= 0.6 and f["danceability"] >= 0.55 and f["valence"] >= 0.45,
+    "על האש": lambda f: f["energy"] >= 0.55 and f["danceability"] >= 0.55 and f["valence"] >= 0.45,
+    "שבת בבית": lambda f: f["energy"] <= 0.65,
+    "ים": lambda f: f["energy"] >= 0.5 and f["valence"] >= 0.5,
+    "טיול בטבע": lambda f: 0.35 <= f["energy"] <= 0.75,
+}
+# שיר שבהחלט לא מתאים לאירוע
+EVENT_OPPOSITE = {
+    "ריצה": lambda f: f["energy"] <= 0.45, "חדר כושר": lambda f: f["energy"] <= 0.45,
+    "מסיבה": lambda f: f["energy"] <= 0.4, "לפני השינה": lambda f: f["energy"] >= 0.65,
+    "עבודה וריכוז": lambda f: f["energy"] >= 0.8, "לימודים": lambda f: f["energy"] >= 0.8,
+    "יום הולדת": lambda f: f["valence"] <= 0.3, "חתונה": lambda f: f["valence"] <= 0.25,
+}
+
+
 class OfflineSpotify:
     """לא מחזיר כלום: כל הבנייה נשענת על האינדקס המקומי, ושום דבר לא יוצא לרשת."""
 
@@ -111,6 +138,44 @@ def simulate(n, seed=1):
     return per_mood, worst
 
 
+def simulate_events(n, seed=1):
+    """בקשות עם אירוע בלבד (בלי מצב רוח), נבדקות מול EVENT_CORE: {אירוע: [מתאימים, הפוכים, סה"כ, פלייליסטים, קצרים]}."""
+    rnd = random.Random(seed)
+    random.seed(seed)
+    use_cached_features_only()
+    sp = OfflineSpotify()
+    genres = [""] + [term for _name, term in engine.GENRE_CHOICES]
+    table = defaultdict(lambda: [0, 0, 0, 0, 0])
+    for _ in range(n):
+        event, genre, language = rnd.choice(list(EVENT_CORE)), rnd.choice(genres), rnd.choice(list(engine.LANGUAGES))
+        count = rnd.choice((10, 20, 30, 50))
+        results = engine.find_tracks(sp, genre, "", event, language, count)
+        row = table[event]
+        for track in results:
+            f = features_of(track["id"])
+            if not f or any(f.get(k) is None for k in ("valence", "energy", "danceability")):
+                continue
+            row[0] += bool(EVENT_CORE[event](f))
+            row[1] += bool(EVENT_OPPOSITE.get(event, lambda _f: False)(f))
+        row[2] += len(results)
+        row[3] += 1
+        row[4] += int(len(results) < count)
+    return table
+
+
+def report_events(table):
+    print(f"{'אירוע':<14}{'פלייליסטים':>11}{'שירים':>8}{'מתאימים':>10}{'הפוכים':>9}{'קצרים':>8}")
+    total = [0, 0, 0, 0, 0]
+    for event, row in sorted(table.items()):
+        ok, bad, songs, lists, short = row
+        pct = lambda x: f"{100 * x / songs:.1f}%" if songs else "-"
+        print(f"{event:<14}{lists:>11}{songs:>8}{pct(ok):>10}{pct(bad):>9}{short:>8}")
+        total = [a + b for a, b in zip(total, row)]
+    ok, bad, songs, lists, short = total
+    if songs:
+        print(f"{'סה״כ':<14}{lists:>11}{songs:>8}{100 * ok / songs:>9.1f}%{100 * bad / songs:>8.1f}%{short:>8}")
+
+
 def report(per_mood, worst):
     print(f"{'מצב רוח':<10}{'פלייליסטים':>11}{'שירים':>8}{'מתאימים':>10}{'הפוכים':>9}{'בלי נתונים':>12}{'קצרים':>8}{'מלאים':>8}")
     totals = [0] * 7
@@ -132,3 +197,5 @@ if __name__ == "__main__":
     if len(sys.argv) > 3:
         engine.NEAR_VIBE = float(sys.argv[3])
     report(*simulate(runs, seed))
+    print()
+    report_events(simulate_events(runs, seed))

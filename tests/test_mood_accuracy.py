@@ -35,6 +35,8 @@ def test_sad_playlist_has_no_happy_songs(monkeypatch):
 
 def test_short_list_is_better_than_wrong_songs(monkeypatch):
     # מבקשים 50 אבל יש רק 12 שירים עצובים: מקבלים 12, לא עוד 38 שירים שמחים או בלי נתונים
+    # בלי דף התחלה אקראי: החיפוש המדומה לא מכבד מונח, ודף אקראי היה מפספס את 12 העצובים שבתחילת הרשימה
+    monkeypatch.setattr(engine, "RANDOM_START_PAGES", 1)
     sp, features = library(monkeypatch, sad=12, happy=80, unknown=30)
     results = engine.find_tracks(sp, "", "עצוב", "", "אנגלית", 50)
     assert len(results) == 12
@@ -112,3 +114,21 @@ def test_pool_terms_are_built_smaller_to_save_spotify_requests():
     assert build_index.tracks_for("sad songs") == build_index.POOL_TRACKS_PER_TERM
     assert build_index.tracks_for("israeli jazz") == build_index.POOL_TRACKS_PER_TERM
     assert build_index.tracks_for("sad") == build_index.TRACKS_PER_TERM
+
+
+def _tracks(*artists):
+    return [{"artists": [(a, a)], "name": f"{a}{i}", "uri": f"spotify:track:{a}{i}"} for i, a in enumerate(artists)]
+
+
+def test_separate_artists_leaves_no_neighbours_when_possible():
+    # אמן אחד עם מחצית מהשירים: חייב להיות משובץ לאורך כל הרשימה, לא להישאר לבד בסוף
+    for _ in range(50):
+        pool = _tracks("a", "a", "a", "b", "c", "d", "e")
+        import random
+        random.shuffle(pool)
+        out = engine.separate_artists(pool)
+        assert len(out) == 7 and all(x["artists"][0][0] != y["artists"][0][0] for x, y in zip(out, out[1:]))
+    # כשאי אפשר (רוב השירים של אמן אחד), לא נופלים ולא מאבדים שירים
+    out = engine.separate_artists(_tracks("a", "a", "a", "a", "b"))
+    assert sorted(t["name"] for t in out) == sorted(t["name"] for t in _tracks("a", "a", "a", "a", "b"))
+    assert engine.separate_artists([]) == []

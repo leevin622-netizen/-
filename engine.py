@@ -1,5 +1,6 @@
 import random
 import re
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -316,13 +317,23 @@ def find_personal_tracks(sp, language, count, seen, years=None, genre="", artist
 
 
 def separate_artists(results):
-    """שירים של אותו אמן לא יופיעו ברצף, אם יש ברירה. בשביל זה נשאר הסדר בתוך כל אמן."""
+    """
+    שירים של אותו אמן לא יופיעו ברצף, אם אפשר. בדרך כלל לוקחים את הראשון שאינו של האמן הקודם,
+    אבל אמן שנשארו לו מחצית מהשירים או יותר חייב להיכנס עכשיו, אחרת הוא יישאר לבד בסוף ויצטרף ברצף.
+    הסדר בתוך כל אמן נשמר.
+    """
+    def artist_of(track):
+        return track["artists"][0][0] if track["artists"] else None
+
     remaining = list(results)
     ordered = []
     while remaining:
-        last = ordered[-1]["artists"][0][0] if ordered and ordered[-1]["artists"] else None
+        last = artist_of(ordered[-1]) if ordered else None
+        counts = Counter(artist_of(t) for t in remaining)
+        urgent = [a for a, count in counts.items() if a is not None and a != last and count * 2 >= len(remaining)]
+        wanted = urgent[0] if urgent else None
         index = next(
-            (i for i, t in enumerate(remaining) if not t["artists"] or t["artists"][0][0] != last), 0
+            (i for i, t in enumerate(remaining) if (artist_of(t) == wanted if urgent else artist_of(t) != last)), 0
         )
         ordered.append(remaining.pop(index))
     return ordered
