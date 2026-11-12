@@ -8,17 +8,19 @@ from html import escape
 from flask import redirect, request, session
 from lastfm import get_tags_for_artists
 import library
+import taste
 import themes
 from i18n import _
 from urllib.parse import urlsplit
 from previews import preview_url
 from engine import to_result, album_year
+from vibes import get_features
 import web
 from web import (
     GENRE_NAMES, app, cell, cover, current_vibe, decade_label, format_rank, header, liked_artist_tags, page,
-    spotify_link, stat_boxes, user_id,
+    spotify_link, stat_boxes, user_id, youtube_link,
 )
-from scripts import COPY_JS, LAZY_PLAY_JS, SAVE_CARD_JS, SAVED_JS, TABLE_JS
+from scripts import COPY_JS, EXPORT_JS, LAZY_PLAY_JS, SAVE_CARD_JS, SAVED_JS, TABLE_JS
 
 
 @app.route("/saved-tracks")
@@ -51,7 +53,8 @@ def saved_tracks():
          t["added"], t["duration"], t["rank"][0] if t["rank"] else 0, format_rank(t["rank"])]
         for t in tracks
     ]
-    texts = {"check": _("לסמן את {a0}"), "play": _("השמעת קטע מ{a0}"), "open": _("פתיחה בספוטיפיי")}
+    texts = {"check": _("לסמן את {a0}"), "play": _("השמעת קטע מ{a0}"), "open": _("פתיחה בספוטיפיי"),
+             "youtube": _("חיפוש ביוטיוב")}
 
     artists_count = len({a for t in tracks for a, _name in t["artists"]})
     total_hours = sum(t["duration"] for t in tracks) / 3_600_000
@@ -74,14 +77,34 @@ def saved_tracks():
         + _('<button type="button" class="btn secondary" data-check-visible="tracks">סמן את כל המוצגים</button>')
         + _('<button type="submit" class="btn">צור פלייליסט מהמסומנים</button>')
         + "</div>"
+        + export_toolbar("tracks")
         + f'<div class="table-wrap"><table id="tracks" class="sortable numbered"><thead>{header(columns)}</thead>'
         + "<tbody></tbody></table></div>"
         + _('<noscript><p class="note">כדי לראות את הרשימה צריך לאפשר JavaScript בדפדפן.</p></noscript>')
         + "</form>"
         + f'<script type="application/json" id="tracks-data">{json_for_page(rows)}</script>',
         title=_("כל השירים שאהבתי"), wide=True,
-        script=SAVED_JS.replace("__T__", json.dumps(texts, ensure_ascii=False)) + TABLE_JS + LAZY_PLAY_JS,
+        script=SAVED_JS.replace("__T__", json.dumps(texts, ensure_ascii=False)) + TABLE_JS + LAZY_PLAY_JS + export_js(),
     )
+
+
+def export_toolbar(source):
+    """
+    כפתורי ייצוא של רשימת שירים: העתקה כטקסט (לוואטסאפ, להערות) או הורדה כקובץ CSV (לאקסל).
+    source: "tracks" לטבלת השירים שאהבתי, "playlist" לתצוגה המקדימה. מיוצאים השירים המסומנים, ואם אין, כל המוצגים.
+    """
+    return (
+        f'<div class="toolbar export" data-export="{source}">'
+        f'<button type="button" class="btn secondary" data-kind="copy">{escape(_("📋 העתקת הרשימה"))}</button>'
+        f'<button type="button" class="btn secondary" data-kind="csv">{escape(_("⬇️ הורדה כקובץ (CSV)"))}</button>'
+        "</div>"
+    )
+
+
+def export_js():
+    texts = {"copied": _("✅ הועתק"), "empty": _("אין שירים לייצא."), "song": _("שיר"), "artist": _("אמן"),
+             "album": _("אלבום")}
+    return EXPORT_JS.replace("__X__", json.dumps(texts, ensure_ascii=False))
 
 
 SPOTIFY_IMAGES = "https://i.scdn.co/image/"
@@ -130,7 +153,7 @@ def my_artists():
     for a in artists:
         row = (
             f"<td>{spotify_link('', 'artist', a['id'], cover(a['image']))}</td>"
-            + cell(a["name"], cls="name", html=spotify_link(a["name"], "artist", a["id"]))
+            + cell(a["name"], cls="name", html=spotify_link(a["name"], "artist", a["id"]) + youtube_link(a["name"], a["name"]))
             + cell(a["liked"])
             + cell(format_rank(a["rank"]), -a["rank"][0] if a["rank"] else "")
             + cell(", ".join(a["genres"][:3]), cls="name muted")
@@ -169,6 +192,63 @@ def bar_chart(rows):
         f'<span class="num">{count}</span></div>'
         for i, (label, count) in enumerate(rows)
     ) + "</div>"
+
+
+def meters(rows):
+    """שורות (שם, אחוז 0 עד 100) כמדדים: רוחב העמודה הוא האחוז עצמו, ולא יחסי לשורה הגדולה ביותר."""
+    return '<div class="bars meters">' + "".join(
+        f'<div class="bar-row"><span>{escape(label)}</span>'
+        f'<span class="track"><span class="fill" style="width:{value}%"></span></span>'
+        f'<span class="num">{value}%</span></div>'
+        for label, value in rows
+    ) + "</div>"
+
+
+# כמה מהשירים האחרונים שאהבתם נכנסים לפרופיל המוזיקלי. 4 בקשות ל-ReccoBeats לכל היותר, כדי שהעמוד ייטען מהר
+PROFILE_SAMPLE = 160
+
+
+def music_profile(uid, saved):
+    """הפרופיל (taste.mood_profile) של השירים האחרונים שאהבתם. נשמר רק כשהצליח, כדי לנסות שוב אם השירות לא ענה."""
+    def load():
+        ids = [item["track"]["id"] for item in saved[:PROFILE_SAMPLE] if item["track"].get("id")]
+        found = get_features(ids)
+        return taste.mood_profile([found.get(i) for i in ids])
+    profile = library.cached(uid, "mood_profile", load)
+    if profile is None:
+        library.forget(uid, "mood_profile")
+    return profile
+
+
+def badge(emoji, title, text):
+    """תיבה עם אמוג'י גדול, כותרת ושורת הסבר (כמו "הווייב שלך" בדף הבית)."""
+    return (
+        f'<div class="vibe"><span class="vibe-emoji" aria-hidden="true">{emoji}</span>'
+        f'<span class="vibe-text"><b>{escape(title)}</b><span>{escape(text)}</span></span></div>'
+    )
+
+
+def profile_html(profile, popular):
+    """הפרופיל המוזיקלי: הטיפוס, מדדי האווירה, הקצב הממוצע, וכמה הטעם מיינסטרים. ריק אם אין נתונים."""
+    if not profile and not popular:
+        return ""
+    html = _("<h2>🧬 הפרופיל המוזיקלי שלי</h2>")
+    if profile:
+        emoji, name, text = taste.personality(profile)
+        labels = {"energy": _("⚡ אנרגיה"), "danceability": _("💃 ריקוד"), "valence": _("😊 שמחה"),
+                  "acousticness": _("🎻 אקוסטי")}
+        rows = [(labels[key], round(profile[key] * 100)) for key in taste.PROFILE_FEATURES if profile.get(key) is not None]
+        html += (
+            _('<p class="note">לפי {a0} השירים האחרונים שאהבתם שיש עליהם נתוני אווירה.</p>', a0=profile["tracks"])
+            + badge(emoji, _("הטיפוס המוזיקלי שלכם: {a0}", a0=_(name)), _(text))
+            + meters(rows)
+        )
+        if profile.get("tempo"):
+            html += _('<p class="note">🥁 קצב ממוצע: {a0} BPM</p>', a0=round(profile["tempo"]))
+    if popular:
+        average, emoji, name, text = popular
+        html += badge(emoji, _("כמה הטעם שלכם מיינסטרים: {a0}%", a0=average), f"{_(name)}. {_(text)}")
+    return html
 
 
 @app.route("/stats")
@@ -222,6 +302,10 @@ def my_stats():
     if len(top_artists) >= 3:
         medals = ("🥇", "🥈", "🥉")
         lines.append(_("🏆 הטופ 3 שלי: ") + "  ".join(f"{m} {name}" for m, (name, _count) in zip(medals, top_artists)))
+    profile = music_profile(uid, saved)
+    popular = taste.mainstream([item["track"].get("popularity") for item in saved])
+    if profile:
+        lines.append(_("🧬 הטיפוס המוזיקלי שלי: {a0}", a0=_(taste.personality(profile)[1])))
     lines.append(_("👀 חושבים שיש לכם טעם יותר טוב? תוכיחו 👉 {a0}", a0=public_site()))
     card_text = "\n".join(lines)
     theme = current_vibe()["theme"]
@@ -233,6 +317,7 @@ def my_stats():
     return page(
         _("<h1>הסטטיסטיקות שלי</h1>")
         + stat_boxes([(_("שירים שאהבתי"), len(saved)), (_("אמנים שונים"), len(artist_counts))])
+        + profile_html(profile, popular)
         + _("<h2>ז'אנרים שאתם הכי אוהבים</h2>")
         + _('<p class="note">לפי התגיות של האמנים שאהבתם. ככל שיש לכם יותר שירים מאמן, הוא שוקל יותר.</p>')
         + genres_html

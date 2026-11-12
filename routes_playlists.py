@@ -151,8 +151,30 @@ def my_playlists():
     )
 
 
-def playlist_row(playlist_id, position, track, count, token):
-    """שורה בעריכה: שיר, ומה אפשר לעשות איתו (להזיז למעלה או למטה, או להסיר)."""
+# שיר כפול מסומן ברשימת העריכה
+DUP_CLASS = ' class="dup"'
+
+
+def duplicate_positions(tracks):
+    """
+    המקומות של שירים כפולים בפלייליסט: כל הופעה אחרי הראשונה של אותו שיר.
+    אותו שיר: אותו מזהה, או אותו שם ואותו אמן ראשון (למשל אותו שיר מאלבום ומאוסף).
+    """
+    seen, found = set(), set()
+    for position, track in enumerate(tracks):
+        if not track:
+            continue
+        artists = track.get("artists") or [{}]
+        keys = {("id", track.get("id")), ("name", (track.get("name") or "").strip().lower(), (artists[0].get("name") or "").lower())}
+        keys.discard(("id", None))
+        if keys & seen:
+            found.add(position)
+        seen |= keys
+    return found
+
+
+def playlist_row(playlist_id, position, track, count, token, duplicate=False):
+    """שורה בעריכה: שיר, ומה אפשר לעשות איתו (להזיז למעלה או למטה, או להסיר). duplicate: שיר שכבר מופיע קודם."""
     base = f"/playlist/{playlist_id}"
 
     def button(action, label, extra="", disabled=False):
@@ -172,14 +194,16 @@ def playlist_row(playlist_id, position, track, count, token):
     else:
         info = (
             f'<div class="title">{spotify_link(track["name"], "track", track.get("id"))}</div>'
-            f'<div class="sub">{", ".join(escape(a["name"]) for a in track.get("artists", []))}</div>'
+            f'<div class="sub">{", ".join(escape(a["name"]) for a in track.get("artists", []))}'
+            + (f' <span class="dup-badge">{escape(_("כפול"))}</span>' if duplicate else "")
+            + "</div>"
         )
         cover_html = cover(image_url((track.get("album") or {}).get("images")))
         remove_extra = f'<input type="hidden" name="uri" value="{escape(track["uri"])}">'
         artists = track.get("artists") or [{}]
         play = play_button({"name": track["name"], "id": track.get("id"), "artist": artists[0].get("name", "")})
     return (
-        f'<li data-position="{position}">{cover_html}<div class="info">{info}</div>{play}'
+        f'<li data-position="{position}"{DUP_CLASS if duplicate else ""}>{cover_html}<div class="info">{info}</div>{play}'
         + button("move", "▲", '<input type="hidden" name="direction" value="up">', disabled=position == 0)
         + button("move", "▼", '<input type="hidden" name="direction" value="down">', disabled=position == count - 1)
         + button("remove", "✕", remove_extra)
@@ -204,10 +228,16 @@ def edit_playlist(playlist_id):
         return error
     tracks = playlist_tracks(sp, playlist_id)
     token = csrf_token()
-    rows = "".join(playlist_row(playlist_id, i, t, len(tracks), token) for i, t in enumerate(tracks))
+    doubles = duplicate_positions(tracks)
+    rows = "".join(playlist_row(playlist_id, i, t, len(tracks), token, i in doubles) for i, t in enumerate(tracks))
+    duplicates_note = (
+        '<div class="warn">' + escape(_("נמצאו {a0} שירים כפולים. הם מסומנים ברשימה, ואפשר להסיר אותם בכפתור ✕.", a0=len(doubles)))
+        + "</div>" if doubles else ""
+    )
     size = f'<span id="pl-size">{playlist_size(playlist)}</span>'
     return page(
         _("<h1>{a0}</h1><p class=\"note\">{a1} שירים. הזיזו שירים למעלה ולמטה, או הסירו אותם.</p><form method=\"post\" action=\"/playlist/{a2}/rename\" class=\"toolbar\"><input type=\"hidden\" name=\"csrf\" value=\"{a3}\"><label class=\"field\">שם חדש<input type=\"text\" name=\"name\" value=\"{a4}\" maxlength=\"100\"></label><button class=\"btn secondary\" type=\"submit\">שמירת השם</button></form>", a0=escape(playlist['name']), a1=size, a2=escape(playlist_id), a3=token, a4=escape(playlist["name"]))
+        + duplicates_note
         + (f'<ul class="list cols" id="pl-edit">{rows}</ul>' if rows else _('<p class="note">הפלייליסט ריק.</p>'))
         + _("<form method=\"post\" action=\"/playlist/{a0}/unfollow\" class=\"card\" onsubmit=\"return confirm('להסיר את הפלייליסט מהחשבון שלכם?')\"><input type=\"hidden\" name=\"csrf\" value=\"{a1}\"><p class=\"note\">ספוטיפיי לא מאפשר למחוק פלייליסט לגמרי דרך האפליקציה. הסרה תוציא אותו מהחשבון שלכם.</p><button class=\"btn secondary\" type=\"submit\">הסרה מהחשבון</button></form>", a0=escape(playlist_id), a1=token)
         + _('<p><a href="/my-playlists">לרשימת הפלייליסטים</a></p>'),

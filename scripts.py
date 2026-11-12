@@ -31,9 +31,19 @@ SORT_JS = """
   }
   if (!list) return;
   var originalOrder = Array.from(list.children);
+  // "מסע אנרגיה", כמו סט של די-ג'יי: מתחילים רגוע, עולים בהדרגה לשיא, ויורדים בחזרה לסיום רגוע.
+  // ממיינים לפי אנרגיה, ואז השירים במקומות הזוגיים עולים והאי-זוגיים יורדים
+  function journey() {
+    function energy(li) { var n = parseFloat(li.dataset.energy); return isNaN(n) ? 0.5 : n; }
+    var sorted = Array.from(list.children).sort(function (a, b) { return energy(a) - energy(b); });
+    var up = sorted.filter(function (li, i) { return i % 2 === 0; });
+    var down = sorted.filter(function (li, i) { return i % 2 === 1; }).reverse();
+    up.concat(down).forEach(function (li) { list.appendChild(li); });
+  }
   if (sortSelect) {
     sortSelect.addEventListener("change", function () {
       var key = sortSelect.value, kind = sortKinds[key];
+      if (key === "flow") { journey(); return; }
       var items = key ? Array.from(list.children).sort(function (a, b) {
         var x = a.dataset[key] || "", y = b.dataset[key] || "";
         if (kind === "text") return x.localeCompare(y, "he");
@@ -117,7 +127,26 @@ FUN_JS = """
 # אם אין קטע ב-Deezer או ב-iTunes, נפתח בתחתית המסך נגן ספוטיפיי של השיר, שעובד לכל שיר
 LAZY_PLAY_JS = """
 (function () {
-  var player = new Audio(), playingButton = null, bar = null;
+  var player = new Audio(), playingButton = null, bar = null, now = null;
+  // "מתנגן עכשיו": פס קטן בתחתית המסך עם שם השיר, אקולייזר מונפש, התקדמות וכפתור עצירה
+  function nowBar(button) {
+    if (!now) {
+      now = document.createElement("div");
+      now.className = "now-bar";
+      now.setAttribute("role", "status");
+      now.innerHTML = '<span class="now-eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="now-text"></span>' +
+        '<button type="button" class="now-stop" aria-label="עצירת ההשמעה">⏹</button><span class="now-progress"><i></i></span>';
+      now.querySelector(".now-stop").addEventListener("click", stop);
+      document.body.appendChild(now);
+    }
+    var artist = button.dataset.artist || "";
+    now.querySelector(".now-text").textContent = button.dataset.title + (artist ? " · " + artist : "");
+    now.querySelector(".now-progress i").style.width = "0";
+    now.hidden = false;
+  }
+  player.addEventListener("timeupdate", function () {
+    if (now && player.duration) now.querySelector(".now-progress i").style.width = (player.currentTime / player.duration * 100) + "%";
+  });
   function spotifyBar(id) {
     if (!bar) {
       bar = document.createElement("div");
@@ -140,6 +169,7 @@ LAZY_PLAY_JS = """
       playingButton.textContent = "▶";
     }
     playingButton = null;
+    if (now) now.hidden = true;
   }
   function start(button, url) {
     stop();
@@ -148,6 +178,7 @@ LAZY_PLAY_JS = """
     button.classList.add("playing");
     button.setAttribute("aria-pressed", "true");
     button.textContent = "⏸";
+    nowBar(button);
     player.play().catch(stop);
   }
   player.addEventListener("ended", stop);
@@ -549,7 +580,9 @@ SAVED_JS = """
       esc(T.check.replace("{a0}", name)) + "\\"></td>" +
       "<td><button type=\\"button\\" class=\\"play\\" data-artist=\\"" + esc(first) + "\\" data-title=\\"" + esc(name) +
       "\\" data-id=\\"" + esc(id) + "\\" aria-pressed=\\"false\\" aria-label=\\"" + esc(T.play.replace("{a0}", name)) +
-      "\\">▶</button></td>" +
+      "\\">▶</button><a class=\\"yt\\" href=\\"https://www.youtube.com/results?search_query=" +
+      encodeURIComponent((first + " " + name).trim()) + "\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\" title=\\"" +
+      esc(T.youtube) + "\\" aria-label=\\"" + esc(T.youtube + ": " + name) + "\\">▶️</a></td>" +
       "<td>" + link("", "album", t[3], cover(t[5])) + "</td>" +
       "<td class=\\"name\\">" + link(name, "track", id) + "</td>" +
       "<td class=\\"short\\">" + artists.map(function (a) { return link(a[1], "artist", a[0]); }).join(", ") + "</td>" +
@@ -560,5 +593,76 @@ SAVED_JS = """
       "<td class=\\"muted\\" data-v=\\"" + (t[8] ? -t[8] : "") + "\\">" + esc(t[9]) + "</td></tr>";
   });
   document.getElementById("tracks").tBodies[0].innerHTML = rows.join("");
+})();
+"""
+
+
+# ייצוא רשימת שירים: העתקה כטקסט ("אמן - שיר" בכל שורה) או הורדה כקובץ CSV שנפתח באקסל.
+# מיוצאים השירים המסומנים. בטבלה, אם שום שיר לא מסומן, מיוצאים כל השירים שמוצגים (אחרי חיפוש)
+EXPORT_JS = """
+(function () {
+  var X = __X__;
+  function text(el) { return el ? el.textContent.trim() : ""; }
+  function fromList() {
+    return Array.from(document.querySelectorAll("#playlist > li")).filter(function (li) {
+      var box = li.querySelector("input[type=checkbox]");
+      return !box || box.checked;
+    }).map(function (li) {
+      var artists = Array.from(li.querySelectorAll(".sub a")).map(text).join(", ");
+      return [text(li.querySelector(".title")), artists || text(li.querySelector(".sub")).split(" · ")[0], ""];
+    });
+  }
+  function fromTable() {
+    var rows = Array.from(document.getElementById("tracks").tBodies[0].rows).filter(function (r) {
+      return r.style.display !== "none";
+    });
+    var checked = rows.filter(function (r) { var box = r.querySelector("input[type=checkbox]"); return box && box.checked; });
+    return (checked.length ? checked : rows).map(function (r) {
+      return [text(r.cells[3]), text(r.cells[4]), text(r.cells[5])];
+    });
+  }
+  function csvField(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }
+  function fallback(value, done) {
+    var box = document.createElement("textarea");
+    box.value = value;
+    document.body.appendChild(box);
+    box.select();
+    document.execCommand("copy");
+    box.remove();
+    done();
+  }
+  function copy(value, done) {
+    if (navigator.clipboard) { navigator.clipboard.writeText(value).then(done, function () { fallback(value, done); }); }
+    else { fallback(value, done); }
+  }
+  document.querySelectorAll(".export[data-export]").forEach(function (bar) {
+    bar.addEventListener("click", function (event) {
+      var button = event.target.closest("button[data-kind]");
+      if (!button) return;
+      var songs = bar.dataset.export === "playlist" ? fromList() : fromTable();
+      if (!songs.length) { alert(X.empty); return; }
+      if (button.dataset.kind === "copy") {
+        var lines = songs.map(function (s) { return s[1] ? s[1] + " - " + s[0] : s[0]; });
+        var label = button.dataset.label || button.textContent;
+        button.dataset.label = label;
+        copy(lines.join("\\n"), function () {
+          button.textContent = X.copied;
+          setTimeout(function () { button.textContent = label; }, 2000);
+        });
+        return;
+      }
+      var withAlbum = songs.some(function (s) { return s[2]; });
+      var head = [X.song, X.artist].concat(withAlbum ? [X.album] : []);
+      var table = [head].concat(songs.map(function (s) { return withAlbum ? s : s.slice(0, 2); }));
+      // BOM בהתחלה, כדי שאקסל יזהה עברית
+      var csv = String.fromCharCode(0xFEFF) + table.map(function (row) { return row.map(csvField).join(","); }).join("\\r\\n");
+      var link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      link.download = "playlistor.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    });
+  });
 })();
 """

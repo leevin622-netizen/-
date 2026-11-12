@@ -371,3 +371,42 @@ tr.hot3 td.name:not(.muted)::before { content: "🥉"; animation-delay: .6s; }
 a.yt { margin-inline-start: .3rem; text-decoration: none; opacity: .65; font-size: .9em; transition: opacity .15s, transform .15s; }
 a.yt:hover, a.yt:focus-visible { opacity: 1; transform: scale(1.15); }
 #surprise { margin-inline-start: .5rem; }
+
+/* "מתנגן עכשיו": פס קטן בתחתית בזמן השמעת קטע */
+.now-bar {
+  position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 9;
+  width: min(460px, calc(100% - 24px)); display: flex; align-items: center; gap: 12px;
+  background: #181920; border: 1px solid var(--accent); border-radius: 999px; padding: 10px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .6); overflow: hidden; animation: now-in .25s ease-out;
+}
+.now-bar[hidden] { display: none; }
+.now-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: 15px; }
+.now-stop {
+  flex: none; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--card-hover); color: var(--text); cursor: pointer; font-size: 15px;
+}
+.now-stop:hover { border-color: var(--accent); }
+.now-progress { position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: var(--border); direction: ltr; }
+.now-progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s linear; }
+.now-eq { flex: none; display: inline-flex; align-items: flex-end; gap: 3px; height: 20px; direction: ltr; }
+.now-eq i { display: block; width: 4px; height: 100%; border-radius: 2px; background: var(--accent); transform-origin: bottom; animation: now-eq .9s ease-in-out infinite; }
+.now-eq i:nth-child(2) { animation-delay: -.3s; animation-duration: .7s; }
+.now-eq i:nth-child(3) { animation-delay: -.55s; animation-duration: 1.1s; }
+.now-eq i:nth-child(4) { animation-delay: -.15s; animation-duration: .8s; }
+@keyframes now-eq { 0%, 100% { transform: scaleY(.25); } 50% { transform: scaleY(1); } }
+@keyframes now-in { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* מדדי הפרופיל המוזיקלי, סיכום התצוגה המקדימה, ייצוא, "שוב כמו מקודם" ושירים כפולים */
+.meters .bar-row { grid-template-columns: minmax(90px, 160px) 1fr 56px; }
+.meters .fill { background: linear-gradient(90deg, var(--c1), var(--accent)); opacity: 1; }
+.vibe + .meters, .meters + .note { margin-top: 12px; }
+.note.summary { font-weight: 600; color: var(--text); }
+.toolbar.export { margin-top: 12px; }
+.recent .toolbar form { margin: 0; }
+.dup-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #b45309; color: #fff; font-size: 12px; font-weight: 700; }
+.list li.dup { outline: 1px dashed #b45309; }
+td .yt { display: inline-block; }
+@media (prefers-reduced-motion: reduce) {
+  .now-eq i, .now-bar { animation: none; }
+  .now-eq i { transform: scaleY(.6); }
+}

@@ -21,6 +21,7 @@ from web import (
     genre_options, liked_artist_tags, my_genres, options, page, track_row, user_id,
 )
 from scripts import BUILD_CHECK_JS, LAZY_PLAY_JS, NAME_JS, SORT_JS
+import routes_library
 
 
 def _percent(value):
@@ -133,8 +134,71 @@ def build():
     if not tracks:
         return page(_('<p>לא נמצאו שירים. <a href="/build">נסו שילוב אחר</a>.</p>'))
     token = remember_preview(user_id(sp), criteria, tracks)
+    remember_recent(criteria)
     names = names_for(criteria)
     return render_preview(tracks, token, criteria, names[0], names, requested=criteria["count"])
+
+
+# "שוב כמו מקודם" בדף הבית: הבחירות האחרונות ביצירת פלייליסט נשמרות בסשן של המשתמש
+RECENT_BUILDS = 3
+RECENT_KEYS = ("genre", "mood", "event", "language", "source", "count", "personal")
+
+
+def remember_recent(criteria):
+    """שומר את הבחירה בראש הרשימה. בחירה זהה שכבר ברשימה עוברת לראש, ולא מופיעה פעמיים."""
+    entry = {key: criteria[key] for key in RECENT_KEYS}
+
+    def same(other):
+        return all(other.get(key) == entry[key] for key in ("genre", "mood", "event", "language", "source"))
+
+    recent = [r for r in session.get("recent") or [] if isinstance(r, dict) and not same(r)]
+    session["recent"] = ([entry] + recent)[:RECENT_BUILDS]
+
+
+def criteria_label(entry):
+    """תיאור קצר של בחירה, בשפת הממשק: ז'אנר, מצב רוח ואירוע, למשל "רוק · שמח · ריצה"."""
+    genre = entry.get("genre") or ""
+    parts = [
+        _(GENRE_NAMES.get(genre, genre)) if genre else "",
+        _(entry["mood"]) if entry.get("mood") in GENRE_HINTS else "",
+        _(entry["event"]) if entry.get("event") in EVENT_HINTS else "",
+    ]
+    label = " · ".join(p for p in parts if p)
+    return label + (" ❤️" if entry.get("source") == "liked" else "")
+
+
+def recent_builds(skip_genres=()):
+    """
+    כרטיס "שוב כמו מקודם": כפתור לכל אחת מהבחירות האחרונות, שבונה פלייליסט חדש עם אותן בחירות.
+    skip_genres: ז'אנרים שכבר מופיעים ב"בשבילך", כדי לא להציג את אותו כפתור פעמיים.
+    """
+    forms = ""
+    for entry in session.get("recent") or []:
+        if not isinstance(entry, dict):
+            continue
+        label = criteria_label(entry)
+        only_genre = not entry.get("mood") and not entry.get("event") and entry.get("source") != "liked"
+        if not label or (only_genre and entry.get("genre") in skip_genres):
+            continue
+        fields = {
+            "genre": entry.get("genre") or "", "mood": entry.get("mood") or "", "event": entry.get("event") or "",
+            "language": entry.get("language") or "ביחד", "source": entry.get("source") or "search",
+            "count": entry.get("count") or 20,
+        }
+        hidden = "".join(
+            f'<input type="hidden" name="{name}" value="{escape(str(value))}">' for name, value in fields.items()
+        ) + ('<input type="hidden" name="personal" value="on">' if entry.get("personal") else "")
+        forms += (
+            f'<form method="post" action="/build"><input type="hidden" name="csrf" value="{csrf_token()}">{hidden}'
+            f'<button class="btn secondary" type="submit">{escape(label)}</button></form>'
+        )
+    if not forms:
+        return ""
+    return (
+        '<div class="card for-you recent">'
+        + _('<h2>🔁 שוב כמו מקודם</h2><p class="note">הבחירות האחרונות שלכם, בלחיצה אחת. בכל פעם מתקבלים שירים אחרים.</p>')
+        + f'<div class="toolbar">{forms}</div></div>'
+    )
 
 
 def read_criteria():
@@ -262,11 +326,43 @@ def render_preview(tracks, token, criteria, title, names, requested=None):
     covers = list(dict.fromkeys(t["image"] for t in tracks if t["image"]))[:BACKGROUND_IMAGES]
     return page(
         _("<h1>{a0} שירים בשבילך</h1>", a0=len(tracks))
+        + preview_summary(tracks, feats)
         + short
-        + 
-        _("<p class=\"note\">בטלו את הסימון בשירים שלא מתאימים, העבירו שירים למעלה ולמטה, ואז שמרו. לחיצה על ▶ משמיעה קטע מהשיר. אם אין קטע קצר, נפתח נגן ספוטיפיי של השיר בתחתית המסך. לחיצה על שם השיר פותחת אותו בספוטיפיי.</p><form method=\"post\" action=\"/save\"><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><input type=\"hidden\" name=\"theme\" value=\"{a1}\"><input type=\"hidden\" name=\"preview\" value=\"{a2}\"><div class=\"toolbar\"><label class=\"field\">שם הפלייליסט<input type=\"text\" id=\"title\" name=\"title\" value=\"{a3}\" maxlength=\"100\"></label><button type=\"button\" class=\"btn secondary\" id=\"other-name\" data-names=\"{a4}\">🔄 שם אחר</button></div><div class=\"toolbar\"><label class=\"field\">מיון<select id=\"sort\"><option value=\"\">הסדר המקורי</option><option value=\"name\">שם השיר</option><option value=\"artist\">שם האמן</option><option value=\"duration\">אורך</option><option value=\"year\">שנת יציאה (הישנים קודם)</option><option value=\"bpm\">קצב (BPM)</option><option value=\"energy\">אנרגיה</option><option value=\"valence\">שמחה</option></select></label><button type=\"button\" class=\"btn secondary\" id=\"shuffle\">🔀 ערבב</button></div><ul class=\"list numbered\" id=\"playlist\">{a5}</ul><br><div class=\"toolbar savebar\"><button class=\"btn\" type=\"submit\">שמור בספוטיפיי</button><button class=\"btn secondary\" type=\"submit\" formaction=\"/build/more\">➕ הוסף עוד {a6} שירים</button></div></form><p><a href=\"/build\">התחלה מחדש</a></p>", a0=csrf_token(), a1=escape(theme or ""), a2=escape(token), a3=escape(title), a4=escape(json.dumps(names, ensure_ascii=False)), a5=rows, a6=EXTRA_TRACKS),
-        wide=True, theme=theme, images=covers or None, script=NAME_JS + SORT_JS + LAZY_PLAY_JS,
+        + preview_extras(
+        _("<p class=\"note\">בטלו את הסימון בשירים שלא מתאימים, העבירו שירים למעלה ולמטה, ואז שמרו. לחיצה על ▶ משמיעה קטע מהשיר. אם אין קטע קצר, נפתח נגן ספוטיפיי של השיר בתחתית המסך. לחיצה על שם השיר פותחת אותו בספוטיפיי.</p><form method=\"post\" action=\"/save\"><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><input type=\"hidden\" name=\"theme\" value=\"{a1}\"><input type=\"hidden\" name=\"preview\" value=\"{a2}\"><div class=\"toolbar\"><label class=\"field\">שם הפלייליסט<input type=\"text\" id=\"title\" name=\"title\" value=\"{a3}\" maxlength=\"100\"></label><button type=\"button\" class=\"btn secondary\" id=\"other-name\" data-names=\"{a4}\">🔄 שם אחר</button></div><div class=\"toolbar\"><label class=\"field\">מיון<select id=\"sort\"><option value=\"\">הסדר המקורי</option><option value=\"name\">שם השיר</option><option value=\"artist\">שם האמן</option><option value=\"duration\">אורך</option><option value=\"year\">שנת יציאה (הישנים קודם)</option><option value=\"bpm\">קצב (BPM)</option><option value=\"energy\">אנרגיה</option><option value=\"valence\">שמחה</option></select></label><button type=\"button\" class=\"btn secondary\" id=\"shuffle\">🔀 ערבב</button></div><ul class=\"list numbered\" id=\"playlist\">{a5}</ul><br><div class=\"toolbar savebar\"><button class=\"btn\" type=\"submit\">שמור בספוטיפיי</button><button class=\"btn secondary\" type=\"submit\" formaction=\"/build/more\">➕ הוסף עוד {a6} שירים</button></div></form><p><a href=\"/build\">התחלה מחדש</a></p>", a0=csrf_token(), a1=escape(theme or ""), a2=escape(token), a3=escape(title), a4=escape(json.dumps(names, ensure_ascii=False)), a5=rows, a6=EXTRA_TRACKS), bool(feats)),
+        wide=True, theme=theme, images=covers or None,
+        script=NAME_JS + SORT_JS + LAZY_PLAY_JS + routes_library.export_js(),
     )
+
+
+def preview_summary(tracks, feats):
+    """שורת סיכום מעל התצוגה המקדימה: משך כולל, כמה אמנים, ואם יש נתוני אווירה, גם אנרגיה וקצב ממוצעים."""
+    minutes = round(sum(t.get("duration") or 0 for t in tracks) / 60000)
+    artists = len({a for t in tracks for a, _name in t["artists"]})
+    parts = [_("⏱ {a0} דקות", a0=minutes), _("🎤 {a0} אמנים", a0=artists)]
+    known = [f for f in feats.values() if f]
+    energy = [f["energy"] for f in known if f.get("energy") is not None]
+    tempo = [f["tempo"] for f in known if f.get("tempo")]
+    if energy:
+        parts.append(_("⚡ אנרגיה ממוצעת {a0}%", a0=round(sum(energy) / len(energy) * 100)))
+    if tempo:
+        parts.append(_("🥁 {a0} BPM בממוצע", a0=round(sum(tempo) / len(tempo))))
+    return f'<p class="note summary">{escape(" · ".join(parts))}</p>'
+
+
+SORT_END = '</select></label><button type="button" class="btn secondary" id="shuffle">'
+FORM_END = '</form><p><a href="/build">'
+
+
+def preview_extras(html, has_features):
+    """
+    תוספות לטופס התצוגה המקדימה, שמוכנסות אחרי התרגום (כדי שהטקסט המתורגם של הטופס יישאר כמו שהוא):
+    מיון "מסע אנרגיה" (רק כשיש נתוני אווירה), וכפתורי ייצוא של הרשימה אחרי הטופס.
+    """
+    if has_features:
+        option = f'<option value="flow">{escape(_("⛰️ מסע אנרגיה (עולה לשיא ויורד)"))}</option>'
+        html = html.replace(SORT_END, option + SORT_END, 1)
+    return html.replace(FORM_END, "</form>" + routes_library.export_toolbar("playlist") + '<p><a href="/build">', 1)
 
 
 @app.route("/build/more", methods=["POST"])

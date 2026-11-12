@@ -206,6 +206,7 @@ def home():
         )
         + "</span></div>"
         + for_you()
+        + routes_build.recent_builds(skip_genres=my_genres())
         + '<div class="menu">'
         + onboarding_card
         + _("<a href=\"/build\">✨ צור פלייליסט חדש<small>לפי ז'אנר (גם בעברית), מצב רוח, אירוע ושפה, מכל ספוטיפיי או מהשירים שאהבתי</small></a><a href=\"/saved-tracks\">❤️ כל השירים שאהבתי<small>הרשימה המלאה, עם השמעת קטעים ומיון לפי אמן, תאריך ועוד</small></a><a href=\"/my-artists\">🎤 כל האמנים שאני אוהב<small>מי שאני עוקב אחריו, שומע הכי הרבה, או אוהב את השירים שלו</small></a><a href=\"/stats\">📊 הסטטיסטיקות שלי<small>ז'אנרים, עשורים, אמנים מובילים וכרטיס לשיתוף</small></a><a href=\"/existing-playlists\">📚 פלייליסטים קיימים<small>הפלייליסטים הגדולים בספוטיפיי בארצות הברית ובישראל, עם סינון לפי קטגוריות</small></a><a href=\"/my-playlists\">🛠 הפלייליסטים שיצרתי<small>שינוי שם, הסרת שירים וסידור</small></a></div><p class=\"note\">הנתונים נשמרים לכמה שעות כדי שהאפליקציה תהיה מהירה. <a href=\"/refresh\">רענון נתונים מספוטיפיי</a></p><form method=\"post\" action=\"/delete-data\" class=\"card\" onsubmit=\"return confirm('למחוק מהשרת את הנתונים ששמורים עליכם? חשבון הספוטיפיי שלכם לא ישתנה.')\"><input type=\"hidden\" name=\"csrf\" value=\"{a0}\"><p class=\"note\">הנתונים שנשמרו בשרת: הספרייה ושירים שאהבתם, כדי שהאפליקציה תהיה מהירה. מחיקה כאן לא משנה שום דבר בספוטיפיי.</p><button class=\"btn secondary\" type=\"submit\">מחיקת הנתונים שלי מהשרת</button></form>", a0=csrf_token())

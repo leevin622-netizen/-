@@ -600,14 +600,18 @@ def format_rank(rank):
     return f"#{rank[0]} · {_(rank[1])}" if rank else ""
 
 
+def youtube_link(query, name):
+    """קישור קטן לחיפוש ביוטיוב (קליפ או הופעה חיה), ליד כפתור ▶ או ליד שם של אמן."""
+    return _(
+        '<a class="yt" href="https://www.youtube.com/results?search_query={a0}" target="_blank" rel="noopener noreferrer" '
+        'title="חיפוש ביוטיוב" aria-label="חיפוש ביוטיוב: {a1}">▶️</a>', a0=quote_plus(query.strip()), a1=escape(name),
+    )
+
+
 def play_button(track):
     """כפתור ▶ שטוען קטע רק בלחיצה (ראו LAZY_PLAY_JS)."""
     first_artist = track["artists"][0][1] if track.get("artists") else track.get("artist", "")
-    query = quote_plus(f"{first_artist} {track['name']}".strip())
-    youtube = _(
-        '<a class="yt" href="https://www.youtube.com/results?search_query={a0}" target="_blank" rel="noopener noreferrer" '
-        'title="חיפוש ביוטיוב" aria-label="חיפוש ביוטיוב: {a1}">▶️</a>', a0=query, a1=escape(track["name"]),
-    )
+    youtube = youtube_link(f"{first_artist} {track['name']}", track["name"])
     return (
         _("<button type=\"button\" class=\"play\" data-artist=\"{a0}\" data-title=\"{a1}\" data-id=\"{a2}\" aria-pressed=\"false\" aria-label=\"השמעת קטע מ{a3}\">▶</button>", a0=escape(first_artist), a1=escape(track["name"]), a2=escape(track.get("id") or ""), a3=escape(track["name"]))
         + youtube
