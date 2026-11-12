@@ -46,18 +46,18 @@ GENRE_HINTS = {
 # לאווירה. הם לא משתתפים בחיפוש הרגיל, כדי שהז'אנר שנבחר לא יתדלדל
 MOOD_POOL_TERMS = {
     "שמח": ["feel good", "happy", "summer hits", "upbeat"],
-    "עצוב": ["sad songs", "melancholy", "heartbreak", "emotional", "piano ballad"],
+    "עצוב": ["sad songs", "melancholy", "heartbreak", "emotional", "piano ballad", "sad piano", "sad indie", "tearjerker", "acoustic sad"],
     "אנרגטי": ["edm", "workout", "power", "hard rock"],
     "רגוע": ["relax", "calm", "peaceful", "acoustic chill", "lo-fi"],
     "רומנטי": ["love songs", "slow jams", "romance", "acoustic love"],
     "מוטיבציה": ["gym", "motivational", "hype", "epic"],
-    "שבור לב": ["heartbreak", "breakup songs", "crying", "lonely"],
+    "שבור לב": ["heartbreak", "breakup songs", "crying", "lonely", "breakup ballad", "heartache", "missing you", "sad love songs"],
     "בא לרקוד": ["club", "dancefloor", "dance pop", "latin dance"],
     "חולמני": ["dream", "shoegaze", "ethereal", "chillwave"],
 }
 # ז'אנרים ישראליים נוספים: יש בהם שירים מכל מצב רוח, והסינון לפי אווירה בוחר מהם. הם חשובים בעיקר
 # לבקשות בעברית, כי יש הרבה פחות שירים בעברית באינדקס
-HEBREW_POOL_TERMS = ["israeli singer-songwriter", "israeli electronic", "israeli jazz", "hasidic"]
+HEBREW_POOL_TERMS = ["israeli singer-songwriter", "israeli electronic", "israeli jazz", "hasidic", "israeli ballad", "israeli indie"]
 
 
 def pool_terms(mood, language, used=()):
