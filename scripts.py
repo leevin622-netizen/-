@@ -666,3 +666,18 @@ EXPORT_JS = """
   });
 })();
 """
+
+
+# העתקת הקבלה של הסטטיסטיקות
+RECEIPT_JS = """
+(function () {
+  var button = document.getElementById("copy-receipt"), box = document.getElementById("receipt-text");
+  if (!button || !box) return;
+  button.addEventListener("click", function () {
+    var label = button.textContent;
+    function done() { button.textContent = "✅ הועתק"; setTimeout(function () { button.textContent = label; }, 2000); }
+    if (navigator.clipboard) { navigator.clipboard.writeText(box.textContent).then(done); }
+    else { var range = document.createRange(); range.selectNode(box); getSelection().removeAllRanges(); getSelection().addRange(range); document.execCommand("copy"); done(); }
+  });
+})();
+"""

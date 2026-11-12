@@ -166,3 +166,22 @@ def test_edit_page_marks_duplicates(logged_in):
     html = client.get(f"/playlist/{PLAYLIST_ID}").get_data(as_text=True)
     assert html.count("dup-badge") == 1 and "נמצאו 1 שירים כפולים" in html
     assert '<li data-position="2" class="dup">' in html and '<li data-position="0">' in html
+
+
+def test_receipt_text_has_even_width_and_cuts_long_names():
+    text = routes_library.receipt_text([("Short", 12), ("A" * 80, 3)], 150, "12.11.2026")
+    lines = text.split("\n")
+    rows = [line for line in lines if line.startswith("Short") or line.startswith("A")]
+    assert len(rows) == 2 and all(len(r) == routes_library.RECEIPT_WIDTH for r in rows)
+    assert rows[0].endswith("12") and "…" in rows[1] and "150" in text and "12.11.2026" in text
+
+
+def test_stats_page_has_receipt_and_copy_button(logged_in):
+    client, _sp, _csrf = logged_in
+    html = client.get("/stats").get_data(as_text=True)
+    assert 'id="receipt-text"' in html and 'id="copy-receipt"' in html and "הקבלה שלי" in html
+
+
+def test_hebrew_pool_terms_include_the_new_ones():
+    import engine
+    assert {"israeli love songs", "mizrahi ballad", "hebrew songs"} <= set(engine.HEBREW_POOL_TERMS)

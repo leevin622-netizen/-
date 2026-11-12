@@ -3,6 +3,7 @@
 """
 import json
 import os
+import time
 from collections import Counter
 from html import escape
 from flask import redirect, request, session
@@ -20,7 +21,7 @@ from web import (
     GENRE_NAMES, app, cell, cover, current_vibe, decade_label, format_rank, header, liked_artist_tags, page,
     spotify_link, stat_boxes, user_id, youtube_link,
 )
-from scripts import COPY_JS, EXPORT_JS, LAZY_PLAY_JS, SAVE_CARD_JS, SAVED_JS, TABLE_JS
+from scripts import COPY_JS, EXPORT_JS, RECEIPT_JS, LAZY_PLAY_JS, SAVE_CARD_JS, SAVED_JS, TABLE_JS
 
 
 @app.route("/saved-tracks")
@@ -194,6 +195,27 @@ def bar_chart(rows):
     ) + "</div>"
 
 
+RECEIPT_WIDTH = 34
+
+
+def receipt_text(artists, total, date):
+    """
+    "קבלה" של האמנים האהובים, כטקסט במרווח אחיד (מתאים לוואטסאפ ולסטורי): שורה לכל אמן עם כמות השירים.
+    artists: [(שם, כמות)]. שם ארוך נחתך, כדי שהשורות יישארו באותו רוחב.
+    """
+    line = "-" * RECEIPT_WIDTH
+    rows = []
+    for name, count in artists:
+        shown = name if len(name) <= RECEIPT_WIDTH - 6 else name[:RECEIPT_WIDTH - 7] + "…"
+        rows.append(f"{shown}{str(count).rjust(RECEIPT_WIDTH - len(shown))}")
+    return "\n".join(
+        [_("🧾 הקבלה המוזיקלית שלי").center(RECEIPT_WIDTH), date.center(RECEIPT_WIDTH), line]
+        + rows
+        + [line, f"{_('סה״כ שירים')}{str(total).rjust(RECEIPT_WIDTH - len(_('סה״כ שירים')))}", line,
+           _("תודה שהקשבתם 🎧").center(RECEIPT_WIDTH)]
+    )
+
+
 def meters(rows):
     """שורות (שם, אחוז 0 עד 100) כמדדים: רוחב העמודה הוא האחוז עצמו, ולא יחסי לשורה הגדולה ביותר."""
     return '<div class="bars meters">' + "".join(
@@ -249,6 +271,19 @@ def profile_html(profile, popular):
         average, emoji, name, text = popular
         html += badge(emoji, _("כמה הטעם שלכם מיינסטרים: {a0}%", a0=average), f"{_(name)}. {_(text)}")
     return html
+
+
+def receipt_html(top_artists, total):
+    """הקבלה על המסך, עם כפתור העתקה. ריקה אם אין אמנים."""
+    if not top_artists:
+        return ""
+    text = receipt_text(top_artists, total, time.strftime("%d.%m.%Y"))
+    return (
+        _("<h2>🧾 הקבלה שלי</h2>")
+        + f'<pre class="receipt" id="receipt-text" dir="ltr">{escape(text)}</pre>'
+        + f'<div class="toolbar"><button type="button" class="btn secondary" id="copy-receipt">'
+        f'{escape(_("📋 העתקת הקבלה"))}</button></div>'
+    )
 
 
 @app.route("/stats")
@@ -325,6 +360,7 @@ def my_stats():
         + (bar_chart(decade_rows) if decade_rows else _('<p class="note">אין מידע על שנות היציאה.</p>'))
         + _("<h2>האמנים שאהבתם הכי הרבה</h2>")
         + bar_chart(top_artists)
+        + receipt_html(top_artists, len(saved))
         + _("<h2>📸 כרטיס לשיתוף</h2>")
         + '<div class="share">'
         + share_card_svg(len(saved), tiles, theme)
@@ -337,7 +373,7 @@ def my_stats():
         + _('<div class="toolbar"><button type="button" class="btn secondary" id="copy-card">📋 העתקת טקסט</button></div>')
         + "</div></div>"
         + _('<p><a href="/">חזרה לדף הבית</a></p>'),
-        title=_("הסטטיסטיקות שלי"), wide=True, script=COPY_JS + SAVE_CARD_JS,
+        title=_("הסטטיסטיקות שלי"), wide=True, script=COPY_JS + SAVE_CARD_JS + RECEIPT_JS,
     )
 
 

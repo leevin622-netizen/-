@@ -57,7 +57,8 @@ MOOD_POOL_TERMS = {
 }
 # ז'אנרים ישראליים נוספים: יש בהם שירים מכל מצב רוח, והסינון לפי אווירה בוחר מהם. הם חשובים בעיקר
 # לבקשות בעברית, כי יש הרבה פחות שירים בעברית באינדקס
-HEBREW_POOL_TERMS = ["israeli singer-songwriter", "israeli electronic", "israeli jazz", "hasidic", "israeli ballad", "israeli indie"]
+HEBREW_POOL_TERMS = ["israeli singer-songwriter", "israeli electronic", "israeli jazz", "hasidic", "israeli ballad", "israeli indie",
+                      "israeli love songs", "mizrahi ballad", "hebrew songs"]
 
 
 def pool_terms(mood, language, used=()):

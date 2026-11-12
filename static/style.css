@@ -410,3 +410,10 @@ td .yt { display: inline-block; }
   .now-eq i, .now-bar { animation: none; }
   .now-eq i { transform: scaleY(.6); }
 }
+
+/* הקבלה בעמוד הסטטיסטיקות */
+.receipt {
+  max-width: 360px; margin: 0 auto 12px; padding: 18px 16px; white-space: pre; overflow-x: auto;
+  background: #f6f1e4; color: #222; border-radius: 6px; font: 14px/1.5 "Courier New", monospace;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45); text-align: left;
+}

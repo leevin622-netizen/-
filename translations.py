@@ -425,4 +425,9 @@ TRANSLATIONS = {
     'גם להיטים גדולים וגם שירים שפחות מכירים.': {'en': 'Big hits and lesser-known songs alike.'},
     'ציידי פנינים': {'en': 'Gem hunters'},
     'אתם מוצאים שירים שרוב האנשים עוד לא גילו.': {'en': 'You find songs most people have not discovered yet.'},
+    '🧾 הקבלה המוזיקלית שלי': {'en': '🧾 MY MUSIC RECEIPT'},
+    'סה״כ שירים': {'en': 'TOTAL SONGS'},
+    'תודה שהקשבתם 🎧': {'en': 'Thanks for listening 🎧'},
+    '<h2>🧾 הקבלה שלי</h2>': {'en': '<h2>🧾 My receipt</h2>'},
+    '📋 העתקת הקבלה': {'en': '📋 Copy the receipt'},
 }
