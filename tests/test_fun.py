@@ -105,3 +105,13 @@ def test_undo_never_unfollows_my_own_playlist(logged_in):
 def test_catalog_button_toggles_between_add_and_undo():
     from scripts import CATALOG_JS
     assert "/existing-playlists/unfollow" in CATALOG_JS and "dataset.label" in CATALOG_JS
+
+
+def test_surprise_button_youtube_link_and_manifest(client):
+    import json
+    from web import play_button
+    html = play_button({"name": "Song & Co", "artists": [("a", "Art ist")], "id": "x"})
+    assert 'class="yt"' in html and "search_query=Art+ist+Song+%26+Co" in html and 'rel="noopener noreferrer"' in html
+    manifest = client.get("/static/manifest.webmanifest")
+    assert manifest.status_code == 200 and json.loads(manifest.data)["start_url"] == "/"
+    assert b'rel="manifest"' in client.get("/").data

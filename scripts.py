@@ -257,6 +257,19 @@ BUILD_CHECK_JS = """
     group.scrollIntoView({ behavior: "smooth", block: "center" });
   });
   form.addEventListener("change", function () { group.classList.remove("invalid"); box.hidden = true; });
+  // "הפתיעו אותי": ז'אנר ומצב רוח אקראיים (ולפעמים גם אירוע), ושולחים
+  var surprise = document.getElementById("surprise");
+  function pickRandom(select) {
+    var options = Array.prototype.filter.call(select.options, function (o) { return o.value !== ""; });
+    if (options.length) select.value = options[Math.floor(Math.random() * options.length)].value;
+  }
+  if (surprise) surprise.addEventListener("click", function () {
+    form.elements["event"].value = "";
+    pickRandom(form.elements["genre_choice"]);
+    pickRandom(form.elements["mood"]);
+    if (Math.random() < 0.5) pickRandom(form.elements["event"]);
+    form.requestSubmit();
+  });
 })();
 """
 

@@ -366,3 +366,8 @@ tr.hot3 td.name:not(.muted)::before { content: "🥉"; animation-delay: .6s; }
 .list li.hot-rec .title::before { content: "🔥"; }
 .pl-card.hot .rank { font-weight: 700; color: var(--text); animation: pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .list li.hot, .list li.hot .title::before, .pl-card.hot .rank { animation: none; } }
+
+/* קישור לחיפוש ביוטיוב ליד ▶ */
+a.yt { margin-inline-start: .3rem; text-decoration: none; opacity: .65; font-size: .9em; transition: opacity .15s, transform .15s; }
+a.yt:hover, a.yt:focus-visible { opacity: 1; transform: scale(1.15); }
+#surprise { margin-inline-start: .5rem; }

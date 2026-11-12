@@ -384,4 +384,6 @@ TRANSLATIONS = {
     '<summary>איך משתמשים בדף הזה?</summary>': {'en': '<summary>How to use this page</summary>'},
     'הוסר: {a0}': {'en': 'Removed: {a0}'},
     'ביטול': {'en': 'Undo'},
+    '🎲 הפתיעו אותי': {'en': '🎲 Surprise me'},
+    '<a class="yt" href="https://www.youtube.com/results?search_query={a0}" target="_blank" rel="noopener noreferrer" title="חיפוש ביוטיוב" aria-label="חיפוש ביוטיוב: {a1}">▶️</a>': {'en': '<a class="yt" href="https://www.youtube.com/results?search_query={a0}" target="_blank" rel="noopener noreferrer" title="Search on YouTube" aria-label="Search on YouTube: {a1}">▶️</a>'},
 }

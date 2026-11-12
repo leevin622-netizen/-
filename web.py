@@ -24,7 +24,7 @@ from scripts import FUN_JS
 from i18n import _, LANGS, lang, text_dir, translate_js
 import taste
 import json
-from urllib.parse import urlsplit
+from urllib.parse import quote_plus, urlsplit
 from engine import HEBREW_GENRES, WORLD_GENRES, GENRE_CHOICES
 from vibes import describe
 
@@ -472,6 +472,7 @@ def page(body, title=None, wide=False, script="", theme=None, images=None):
     return (
         f'<!doctype html><html lang="{lang()}" dir="{text_dir()}"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<meta name="theme-color" content="#121212"><link rel="manifest" href="/static/manifest.webmanifest">'
         f'<link rel="icon" href="{FAVICON}">'
         f"<title>{escape(title)}</title><link rel='stylesheet' href='/static/style.css?v={STYLE_VERSION}'><style>{themes.theme_css(theme)}</style></head><body>"
         + themes.background_html(images, theme)
@@ -602,8 +603,14 @@ def format_rank(rank):
 def play_button(track):
     """כפתור ▶ שטוען קטע רק בלחיצה (ראו LAZY_PLAY_JS)."""
     first_artist = track["artists"][0][1] if track.get("artists") else track.get("artist", "")
+    query = quote_plus(f"{first_artist} {track['name']}".strip())
+    youtube = _(
+        '<a class="yt" href="https://www.youtube.com/results?search_query={a0}" target="_blank" rel="noopener noreferrer" '
+        'title="חיפוש ביוטיוב" aria-label="חיפוש ביוטיוב: {a1}">▶️</a>', a0=query, a1=escape(track["name"]),
+    )
     return (
         _("<button type=\"button\" class=\"play\" data-artist=\"{a0}\" data-title=\"{a1}\" data-id=\"{a2}\" aria-pressed=\"false\" aria-label=\"השמעת קטע מ{a3}\">▶</button>", a0=escape(first_artist), a1=escape(track["name"]), a2=escape(track.get("id") or ""), a3=escape(track["name"]))
+        + youtube
     )
 
 

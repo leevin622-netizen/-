@@ -80,3 +80,9 @@ def test_previews_expire_are_capped_and_forgotten_per_user(monkeypatch):
     assert len(routes_build._previews) == 3
     routes_build.forget_previews("u1")
     assert all(p["uid"] != "u1" for p in routes_build._previews.values())
+
+
+def test_build_form_has_surprise_button_and_script():
+    with app.test_request_context("/build"):
+        html = routes_build.build_form()
+    assert 'id="surprise"' in html and "requestSubmit" in html

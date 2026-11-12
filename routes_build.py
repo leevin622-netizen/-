@@ -107,7 +107,8 @@ def build_form(error="", genre=""):
         + f'<form method="post" class="card" id="build-form" novalidate>'
         f'<input type="hidden" name="csrf" value="{csrf_token()}">'
         + must_pick + more
-        + f'<button class="btn" type="submit">{escape(_("✨ הצג שירים"))}</button></form>',
+        + f'<button class="btn" type="submit">{escape(_("✨ הצג שירים"))}</button> '
+        f'<button class="btn secondary" type="button" id="surprise">{escape(_("🎲 הפתיעו אותי"))}</button></form>',
         title=_("צור פלייליסט"), script=BUILD_CHECK_JS.replace("__MESSAGE__", json.dumps(_(MISSING_CHOICE), ensure_ascii=False)),
     )
 
